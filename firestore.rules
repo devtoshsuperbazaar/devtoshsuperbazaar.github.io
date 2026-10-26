@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all for Zero-Trust security
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Administrator allowlist: protected from ordinary users
+    match /admins/{adminUid} {
+      allow read: if isSignedIn() && (request.auth.uid == adminUid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Products collection: public can read ONLY published products; only admins manage
+    match /products/{productId} {
+      allow read: if (resource.data.published == true) || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Blog articles: public can read ONLY published articles; only admins manage
+    match /articles/{articleId} {
+      allow read: if (resource.data.published == true) || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Categories taxonomy
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Retailers directory
+    match /retailers/{retailerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Featured editorial collections
+    match /collections/{collectionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Site settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

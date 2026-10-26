@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Fashion discovery product catalogue item",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Product display title", "maxLength": 150 },
+        "slug": { "type": "string", "description": "Unique URL-friendly slug", "maxLength": 120, "pattern": "^[a-z0-9-]+$" },
+        "brand": { "type": "string", "description": "Brand or label name", "maxLength": 80 },
+        "cat": { "type": "string", "description": "Primary category name", "maxLength": 60 },
+        "subcat": { "type": "string", "description": "Subcategory or product type", "maxLength": 60 },
+        "desc": { "type": "string", "description": "Editorial product description", "maxLength": 1000 },
+        "price": { "type": "number", "description": "Current selling price in the specified currency" },
+        "mrp": { "type": "number", "description": "Maximum retail price or original list price" },
+        "currency": { "type": "string", "description": "Three letter currency code", "maxLength": 3 },
+        "col": { "type": "string", "description": "Primary color name", "maxLength": 50 },
+        "sizes": { "type": "string", "description": "Comma separated or serialized available sizes", "maxLength": 100 },
+        "ret": { "type": "string", "description": "Retailer or store partner name", "maxLength": 80 },
+        "retUrl": { "type": "string", "description": "Direct destination URL at retailer", "maxLength": 500 },
+        "affUrl": { "type": "string", "description": "Verified partner affiliate URL", "maxLength": 500 },
+        "imgUrl": { "type": "string", "description": "Direct public image URL", "maxLength": 600 },
+        "published": { "type": "boolean", "description": "Whether the product is published to the public catalog" },
+        "featured": { "type": "boolean", "description": "Whether to highlight in featured editorial collections" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of creation", "maxLength": 40 },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update", "maxLength": 40 }
+      },
+      "required": ["name", "slug", "brand", "cat", "price", "published"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product category taxonomy",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Category display name", "maxLength": 60 },
+        "slug": { "type": "string", "description": "Category slug identifier", "maxLength": 60, "pattern": "^[a-z0-9-]+$" },
+        "subcategories": { "type": "string", "description": "Comma separated subcategories", "maxLength": 250 }
+      },
+      "required": ["name", "slug"]
+    },
+    "Retailer": {
+      "title": "Retailer",
+      "description": "Verified merchant retailer partner",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Retailer name", "maxLength": 80 },
+        "url": { "type": "string", "description": "Store homepage or base URL", "maxLength": 300 },
+        "isAffiliate": { "type": "boolean", "description": "Whether an affiliate agreement is active" }
+      },
+      "required": ["name"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Administrator allowlist record",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Admin email address", "maxLength": 150 },
+        "role": { "type": "string", "description": "Admin access role", "maxLength": 30 },
+        "addedAt": { "type": "string", "description": "ISO timestamp when admin was provisioned", "maxLength": 40 }
+      },
+      "required": ["email", "role"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Public editorial site settings",
+      "type": "object",
+      "properties": {
+        "announcement": { "type": "string", "description": "Top announcement banner copy", "maxLength": 300 },
+        "disclosure": { "type": "string", "description": "Affiliate disclosure copy", "maxLength": 500 }
+      }
+    },
+    "Article": {
+      "title": "Article",
+      "description": "SEO editorial blog article",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Article headline title and H1", "maxLength": 200 },
+        "slug": { "type": "string", "description": "Unique URL-friendly slug identifier", "maxLength": 150, "pattern": "^[a-z0-9-]+$" },
+        "metaTitle": { "type": "string", "description": "SEO meta title", "maxLength": 100 },
+        "metaDesc": { "type": "string", "description": "SEO meta description", "maxLength": 250 },
+        "excerpt": { "type": "string", "description": "Brief editorial summary excerpt", "maxLength": 500 },
+        "content": { "type": "string", "description": "Main article body in markdown or semantic markup" },
+        "authorName": { "type": "string", "description": "Author display name", "maxLength": 80 },
+        "authorUrl": { "type": "string", "description": "Author profile URL", "maxLength": 300 },
+        "coverImage": { "type": "string", "description": "Cover image URL", "maxLength": 600 },
+        "coverImageAlt": { "type": "string", "description": "Descriptive cover image alt text", "maxLength": 200 },
+        "category": { "type": "string", "description": "Primary article category", "maxLength": 60 },
+        "tags": { "type": "string", "description": "Comma separated or serialized tags", "maxLength": 250 },
+        "published": { "type": "boolean", "description": "Whether the article is published live to the public" },
+        "publishedAt": { "type": "string", "description": "ISO timestamp of public release", "maxLength": 40 },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last modification", "maxLength": 40 },
+        "hasAffiliateLinks": { "type": "boolean", "description": "Whether the article incorporates monetized affiliate recommendations" },
+        "canonicalUrl": { "type": "string", "description": "Canonical URL override", "maxLength": 400 },
+        "ogTitle": { "type": "string", "description": "OpenGraph title", "maxLength": 150 },
+        "ogDesc": { "type": "string", "description": "OpenGraph description", "maxLength": 300 },
+        "ogImage": { "type": "string", "description": "OpenGraph preview image URL", "maxLength": 600 },
+        "noindex": { "type": "boolean", "description": "Robots noindex directive" }
+      },
+      "required": ["title", "slug", "content", "authorName", "published"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Product catalog items with public read for published products and admin write"
+    },
+    "/articles/{articleId}": {
+      "schema": "Article",
+      "description": "Blog articles with public read for published articles and admin write"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Category taxonomy records"
+    },
+    "/retailers/{retailerId}": {
+      "schema": "Retailer",
+      "description": "Retailer partner records"
+    },
+    "/admins/{adminUid}": {
+      "schema": "Admin",
+      "description": "Admin allowlist records restricted to authorized administrators"
+    },
+    "/settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Site-wide editorial settings"
+    }
+  }
+}

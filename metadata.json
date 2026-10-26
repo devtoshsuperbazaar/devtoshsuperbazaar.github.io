@@ -1,0 +1,6 @@
+{
+  "name": "Devtosh SuperBazaar — Men's Fashion Discovery",
+  "description": "Editorial discovery catalog and affiliate shopping platform for women's, men's, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by Devtosh SuperBazaar.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
