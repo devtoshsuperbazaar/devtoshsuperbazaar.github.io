@@ -575,11 +575,12 @@ export function isFootwearProduct(p: Product): boolean {
 }
 
 export function isWomenProduct(p: Product): boolean {
+  if (isKidsProduct(p)) return false;
   const t = `${p.cat || ''} ${p.name || ''} ${p.desc || ''}`.toLowerCase();
   if (t.includes('holder') || t.includes('mount') || t.includes('smartphone')) return false;
   return t.includes('saree') || t.includes('sari') || t.includes('kurti') ||
          t.includes('lehenga') || t.includes('dress') || t.includes('gown') ||
-         t.includes('frock') || t.includes('anarkali') || t.includes('dupatta') ||
+         t.includes('anarkali') || t.includes('dupatta') ||
          t.includes('women') || t.includes('ladies') || t.includes('jewel') ||
          t.includes('handbag') || t.includes('clutch') || t.includes('blouse') ||
          t.includes('salwar') || t.includes('palazzo') || (p.cat || '').toLowerCase().includes('women');
