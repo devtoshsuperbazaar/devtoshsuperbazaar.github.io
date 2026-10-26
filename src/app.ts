@@ -22,7 +22,7 @@ import {
   where,
   serverTimestamp
 } from 'firebase/firestore';
-import { auth, db, testConnection, getEffectiveFirebaseConfig, saveAndApplyApiKey, testApiKeyValidity } from './firebase.ts';
+import { auth, db, getEffectiveFirebaseConfig, saveAndApplyApiKey, testApiKeyValidity } from './firebase.ts';
 import { extractProductDetails, generateProductSlug } from './productExtractor.ts';
 import {
   Article,
@@ -122,7 +122,7 @@ export class Store {
   adminApiKeyError: boolean = false;
   adminSuccessMessage: string = '';
 
-  products: Product[] = [];
+  products: Product[] = [...DEMO_PRODUCTS];
   adminProducts: Product[] = [];
   settings: SiteSettings = DEFAULT_SETTINGS;
   wishlistSlugs: string[] = [];
@@ -571,12 +571,103 @@ function renderProductCard(p: Product): string {
     renderWishlistBtn(p, 'wl') +
     '<div class="pi">' +
       `<div class="rt">${esc(p.brand)}</div>` +
-      `<h3 class="pn"><a href="${u}">${esc(p.name)}</a></h3>` +
+      `<h2 class="pn"><a href="${u}">${esc(p.name)}</a></h2>` +
       renderPrice(p) +
-      `<div class="ck">Sold by ${esc(p.ret)} · Verified price · Checked Oct 2026</div>` +
+      `<div class="ck">Partner retailer: ${esc(p.ret)} · Prices subject to change</div>` +
       `<a class="vp" href="${u}">View details<span class="sr"> for ${esc(p.name)}</span> →</a>` +
     '</div>' +
   '</article>';
+}
+
+function getCategoryFaqs(key: string, title: string): { q: string; a: string }[] {
+  if (key === 'women') {
+    return [
+      {
+        q: 'What styles are featured in the Women’s Collection?',
+        a: 'The collection highlights traditional Banarasi woven silk sarees, pure cotton printed Anarkali kurti sets, flared midi dresses, traditional jewellery, and orthopedic comfort ethnic footwear.'
+      },
+      {
+        q: 'Where do purchases take place?',
+        a: 'When you click to shop on a partner retailer, you are redirected directly to trusted partner marketplaces (such as Meesho). Product checkout, payment, and shipping are handled securely by the partner.'
+      },
+      {
+        q: 'Can prices or stock availability change?',
+        a: 'Yes. Merchant partner pricing and sizes fluctuate based on inventory. We regularly refresh listings, but final prices are confirmed on the partner website.'
+      }
+    ];
+  }
+  if (key === 'men') {
+    return [
+      {
+        q: 'What apparel is included in the Men’s Collection?',
+        a: 'Our menswear selection includes classic Oxford button-down shirts, heavyweight casual tees, stone-washed denim jeans, stretch utility cargo trousers, and cushioned slip-on loafers.'
+      },
+      {
+        q: 'How are product prices and deals determined?',
+        a: 'We monitor popular collections to curate top-rated wardrobe essentials offering value for money from verified retail merchants.'
+      }
+    ];
+  }
+  if (key === 'mobiles' || key === 'electronics') {
+    return [
+      {
+        q: 'What mobile accessories and gadgets are available?',
+        a: 'We feature 360-degree rotating car dashboard phone mounts, foldable aluminium desktop phone and tablet stands, true wireless Bluetooth earbuds, and smartwatches.'
+      },
+      {
+        q: 'Are mobile accessories compatible with all phones?',
+        a: 'Most phone holders and stands feature universal spring-loaded or magnetic grips compatible with modern Apple, Samsung, Xiaomi, and OnePlus devices.'
+      }
+    ];
+  }
+  if (key === 'all' || key === 'home' || !key) {
+    return [
+      {
+        q: 'What is DevtoshSuperBazaar?',
+        a: 'DevtoshSuperBazaar is an independent editorial discovery platform that curates high-value fashion, smartphones, mobile accessories, footwear, and lifestyle products from trusted Indian retail marketplaces.'
+      },
+      {
+        q: 'How do shopping and affiliate links work?',
+        a: 'We handpick top trending items and provide direct outbound links to verified merchant platforms. We may earn an affiliate commission on qualifying purchases at no extra cost to you.'
+      },
+      {
+        q: 'Where does payment and order delivery take place?',
+        a: 'Orders, payments, order tracking, and returns are handled entirely by the destination retailer (e.g., Meesho). DevtoshSuperBazaar does not collect payments or manage shipments directly.'
+      },
+      {
+        q: 'Can product prices or discounts vary?',
+        a: 'Yes, merchant pricing and promotional discounts are subject to change by the respective retailers. We advise checking the final price before completing your purchase.'
+      }
+    ];
+  }
+  return [
+    {
+      q: `How are products in ${title} curated?`,
+      a: 'Our editorial team curates items based on customer satisfaction ratings, construction quality, merchant credibility, and everyday usability.'
+    },
+    {
+      q: 'How do I purchase items from this catalog?',
+      a: 'Clicking any product link takes you to the official retailer storefront to view sizing options and complete your order securely.'
+    }
+  ];
+}
+
+function renderFaqsHtml(faqs: { q: string; a: string }[], heading: string = 'Frequently Asked Questions'): string {
+  if (!faqs || !faqs.length) return '';
+  return `
+    <section class="w faqs-sec" aria-labelledby="faqs-heading">
+      <h2 id="faqs-heading" class="faqs-title">${esc(heading)}</h2>
+      <p class="faqs-lead">Helpful answers regarding our curation, retailer shopping links, and store operations.</p>
+      <div class="faqs-list">
+        ${faqs.map((f, i) => `
+          <details class="faq-item" ${i === 0 ? 'open' : ''}>
+            <summary class="faq-q"><span>${esc(f.q)}</span></summary>
+            <p class="faq-a">${esc(f.a)}</p>
+          </details>
+        `).join('')}
+      </div>
+    </section>
+  `;
 }
 
 function renderPublicCatalog(title: string, desc: string, base: Product[], key: string) {
@@ -669,6 +760,8 @@ function renderPublicCatalog(title: string, desc: string, base: Product[], key: 
     ? [['Home', '/']]
     : [['Home', '/'], [title]];
 
+  const faqs = getCategoryFaqs(key, title);
+
   return {
     title,
     navKey: key,
@@ -696,7 +789,7 @@ function renderPublicCatalog(title: string, desc: string, base: Product[], key: 
           ${brandHtml}${catHtml}${sizeHtml}${colHtml}${priceHtml}${discHtml}
         </aside>
 
-        <main class="mn">
+        <div class="mn">
           <div class="tb">
             <div class="tl">
               <button class="fbtn" id="fbtn" data-a="fb" aria-expanded="${f.mobileFiltersOpen ? 'true' : 'false'}" aria-controls="sidebar-filters">
@@ -731,8 +824,9 @@ function renderPublicCatalog(title: string, desc: string, base: Product[], key: 
               <button class="lm" data-a="clr" style="margin-top:16px">Clear all filters</button>
             </div>
           `}
-        </main>
+        </div>
       </div>
+      ${renderFaqsHtml(faqs, `${title} — Questions & Answers`)}
     `
   };
 }
@@ -769,7 +863,7 @@ function renderProductDetail(p: Product) {
             <div class="rt">${esc(p.brand)}</div>
             <h1 class="f" tabindex="-1">${esc(p.name)}</h1>
             ${renderPrice(p)}
-            <p class="mu" style="margin:6px 0 0">Verified price · checked Oct 2026</p>
+            <p class="mu" style="margin:6px 0 0">Listed via ${esc(p.ret)} · Prices and availability subject to merchant change</p>
             <p class="lead">${esc(p.desc)}</p>
             <dl class="sp">
               <dt>Retailer</dt><dd>${esc(p.ret)}</dd>
@@ -806,6 +900,20 @@ function renderProductDetail(p: Product) {
         </div>
         <h2 class="f rh">You may also like</h2>
         <div class="g">${rel.map(renderProductCard).join('')}</div>
+        ${renderFaqsHtml([
+          {
+            q: `Where can I buy "${p.name}"?`,
+            a: `This item is available through verified merchant partner ${p.ret}. Clicking "Shop at ${p.ret}" opens the official product listing where you can select your size or color variant and complete checkout.`
+          },
+          {
+            q: 'How does DevtoshSuperBazaar track prices?',
+            a: `Prices displayed are indicative of recent retailer listings. Retailers frequently update discounts and stock levels, so please verify the live price directly on ${p.ret}.`
+          },
+          {
+            q: 'What is the return and shipping policy?',
+            a: `Because orders are placed directly on ${p.ret}, shipping speeds, delivery fees, and return or exchange windows follow ${p.ret}'s official customer care policies.`
+          }
+        ], `About This Product — FAQs`)}
       </section>
     `
   };
@@ -816,6 +924,8 @@ function renderWishlistView() {
   return {
     title: 'Wishlist',
     navKey: 'wishlist',
+    noindex: true,
+    canonical: 'https://devtoshsuperbazaar.github.io/wishlist/',
     html: `
       <section class="w pgs wide">
         ${renderBreadcrumb([['Home', '/'], ['Wishlist']])}
@@ -831,6 +941,16 @@ function renderWishlistView() {
             <p style="margin-top:20px"><a class="vp" href="/">Explore All Collections →</a></p>
           </div>
         `}
+        ${renderFaqsHtml([
+          {
+            q: 'How does the DevtoshSuperBazaar Wishlist work?',
+            a: 'Items you save by clicking the heart icon are stored privately in your browser using local storage. You do not need to create an account or provide personal data.'
+          },
+          {
+            q: 'Will my saved wishlist items expire?',
+            a: 'Saved items remain in your browser until you remove them or clear your browser browsing data. Wishlist items are never shared with third parties or indexed by search engines.'
+          }
+        ], 'Wishlist Questions & Privacy')}
       </section>
     `
   };
@@ -898,9 +1018,6 @@ function renderAdminHeader(title: string): string {
 }
 
 function renderAdminLogin() {
-  const currentCfg = getEffectiveFirebaseConfig();
-  const isKeySuspicious = currentCfg.apiKey.length !== 39;
-
   return {
     title: 'Admin Sign In',
     navKey: 'admin',
@@ -923,44 +1040,11 @@ function renderAdminLogin() {
           ` : ''}
 
           ${store.adminError ? `
-            <div class="adm-alert error" role="alert" style="background:#FDF5F5;border:1px solid #EACBCB;border-left:4px solid var(--wn);padding:18px 20px;border-radius:4px;color:#4D2225;box-shadow:0 2px 10px rgba(134,83,86,.08);margin-bottom:20px;">
-              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <span style="display:inline-grid;place-items:center;width:22px;height:22px;background:#865356;color:#FFF;border-radius:50%;font-size:12px;font-weight:700">!</span>
-                  <strong style="font-size:14px;color:#865356;letter-spacing:.02em">
-                    ${store.adminApiKeyError ? 'Firebase Authentication Notice: Web API Key' : 'Authentication Notice'}
-                  </strong>
-                </div>
+            <div class="adm-alert error" role="alert" style="background:#FDF5F5;border:1px solid #EACBCB;border-left:4px solid var(--wn);padding:14px 16px;border-radius:4px;color:#4D2225;box-shadow:0 2px 10px rgba(134,83,86,.08);margin-bottom:20px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font-size:13px;line-height:1.5">${esc(store.adminError)}</span>
                 <button type="button" id="adm-clear-error" style="background:none;border:none;color:#865356;cursor:pointer;font-size:16px;line-height:1;padding:2px 4px" title="Dismiss">✕</button>
               </div>
-
-              <p style="margin:0 0 10px;font-size:13px;line-height:1.55">
-                ${esc(store.adminError)}
-              </p>
-
-              ${store.adminApiKeyError || isKeySuspicious ? `
-                <div style="background:#FFF;border:1px solid #E8C8CA;border-radius:4px;padding:14px;margin-top:12px">
-                  <div style="font-size:12px;font-weight:600;color:#865356;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">
-                    Update Web API Key for project <code>devtoshsuperbazaar-84898</code>
-                  </div>
-                  <p class="mu" style="font-size:12px;margin:0 0 10px;line-height:1.4">
-                    The currently loaded key is <b>${currentCfg.apiKey.length} characters</b> (standard Google API keys are 39 characters).
-                    To fix this, copy your Web API Key from the <a href="https://console.firebase.google.com/project/devtoshsuperbazaar-84898/settings/general" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;color:#865356;font-weight:600">Firebase Console (General Settings)</a> and paste it below:
-                  </p>
-                  <div style="display:flex;flex-direction:column;gap:8px">
-                    <input type="text" id="quick-fix-api-key" class="adm-input" value="${esc(currentCfg.apiKey)}" placeholder="AIzaSy..." style="font-family:monospace;font-size:12px;padding:8px 10px" />
-                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-                      <span id="quick-fix-char-count" style="font-size:11px;color:${currentCfg.apiKey.length === 39 ? '#2E7D32' : '#865356'};font-weight:600">
-                        ${currentCfg.apiKey.length} / 39 characters ${currentCfg.apiKey.length !== 39 ? '(incomplete)' : '(standard length)'}
-                      </span>
-                      <button type="button" id="quick-fix-api-key-btn" class="lm" style="padding:6px 14px;font-size:12px">
-                        Save &amp; Verify Key
-                      </button>
-                    </div>
-                  </div>
-                  <div id="quick-fix-feedback" style="margin-top:8px;font-size:12px"></div>
-                </div>
-              ` : ''}
             </div>
           ` : ''}
 
@@ -979,36 +1063,6 @@ function renderAdminLogin() {
               Sign In to Dashboard
             </button>
           </form>
-
-          <details style="margin-top:20px;padding-top:14px;border-top:1px solid var(--bd);font-size:12px">
-            <summary style="cursor:pointer;color:var(--wn);font-weight:600;display:flex;align-items:center;gap:6px">
-              <span>⚙️ Firebase Connection &amp; Web Key Settings</span>
-            </summary>
-            <div style="margin-top:12px;background:var(--sf);border:1px solid var(--bd);padding:14px;border-radius:3px">
-              <div style="margin-bottom:8px">
-                <span class="mu">Connected Project:</span> <code>devtoshsuperbazaar-84898</code>
-              </div>
-              <div style="margin-bottom:8px">
-                <span class="mu">Active API Key:</span> <code style="word-break:break-all">${esc(currentCfg.apiKey)}</code> (${currentCfg.apiKey.length} chars)
-              </div>
-              <div style="margin-top:10px">
-                <label for="cfg-api-key" style="display:block;margin-bottom:4px;font-weight:600">Enter / Update Web API Key:</label>
-                <div style="display:flex;gap:6px">
-                  <input type="text" id="cfg-api-key" class="adm-input" value="${esc(currentCfg.apiKey)}" style="font-family:monospace;font-size:12px" />
-                  <button type="button" id="cfg-api-key-save-btn" class="lm" style="white-space:nowrap;padding:6px 12px;font-size:12px">Save</button>
-                </div>
-                <div id="cfg-api-key-status" style="margin-top:6px;font-size:12px"></div>
-              </div>
-              <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-                <button type="button" id="cfg-test-conn-btn" class="lm sec" style="padding:5px 12px;font-size:11px">Test Connection</button>
-                <button type="button" id="cfg-reset-btn" class="lm sec" style="padding:5px 12px;font-size:11px">Reset to Default</button>
-              </div>
-            </div>
-          </details>
-
-          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bd);font-size:12px;color:var(--mu);line-height:1.5">
-            <b>Access Policy:</b> Sign-in uses Firebase Authentication with project <code>devtoshsuperbazaar-84898</code>. Privileged dashboard access is verified against the Firestore <code>admins</code> allowlist.
-          </div>
         </div>
 
         <p style="text-align:center;margin-top:24px">
@@ -2330,6 +2384,21 @@ export function draw(isNew = false) {
     canLink.setAttribute('href', (v as any).canonical);
   }
 
+  // Synchronize robots meta tag
+  let robotsMeta = document.querySelector('meta[name="robots"]');
+  if ((v as any).noindex || route.root === 'admin' || route.root === 'wishlist') {
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta');
+      robotsMeta.setAttribute('name', 'robots');
+      document.head.appendChild(robotsMeta);
+    }
+    robotsMeta.setAttribute('content', 'noindex, nofollow');
+  } else {
+    if (robotsMeta) {
+      robotsMeta.setAttribute('content', 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1');
+    }
+  }
+
   // Synchronize Nav links
   const links = document.querySelectorAll('[data-n]');
   links.forEach(a => {
@@ -3631,20 +3700,6 @@ document.addEventListener('click', async (e) => {
     }
   }
 
-  // Test connection button
-  if (target.id === 'cfg-test-conn-btn') {
-    const status = document.getElementById('cfg-api-key-status');
-    if (status) status.innerHTML = '<span class="mu">Testing connection to Firebase…</span>';
-    const res = await testConnection();
-    if (status) {
-      if (res.connected) {
-        status.innerHTML = `<span style="color:#2E7D32">✓ ${esc(res.message)}</span>`;
-      } else {
-        status.innerHTML = `<span style="color:#C62828">✗ ${esc(res.message)}</span>`;
-      }
-    }
-  }
-
   // Reset to default configuration
   if (target.id === 'cfg-reset-btn') {
     try {
@@ -3739,10 +3794,6 @@ document.addEventListener('click', (e) => {
 // Initialization on DOM Ready
 // --------------------------------------------------------------------------
 async function init() {
-  testConnection().then(res => {
-    console.log('Firebase connection status:', res.message);
-  });
-
   // Listen to Firebase Auth state
   onAuthStateChanged(auth, async (user) => {
     store.currentUser = user;
