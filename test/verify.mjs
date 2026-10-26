@@ -178,10 +178,48 @@ if (fs.existsSync('dist')) {
   if (!robots.includes('Sitemap: https://devtoshsuperbazaar.github.io/sitemap.xml')) {
     throw new Error('robots.txt missing Sitemap reference');
   }
+  if (!robots.includes('Disallow: /admin/') || !robots.includes('Disallow: /wishlist/')) {
+    throw new Error('robots.txt missing Disallow rules for /admin/ or /wishlist/');
+  }
 
-  // Check fallback files
+  // Check fallback & special files
   if (!fs.existsSync('dist/404.html')) throw new Error('dist/404.html missing');
   if (!fs.existsSync('dist/.nojekyll')) throw new Error('dist/.nojekyll missing');
+  if (!fs.existsSync('dist/llms.txt')) throw new Error('dist/llms.txt missing');
+  const llmsTxt = fs.readFileSync('dist/llms.txt', 'utf8');
+  if (!llmsTxt.includes('https://devtoshsuperbazaar.github.io')) throw new Error('llms.txt missing canonical URL');
+
+  // Check Wishlist static page
+  const wlPath = 'dist/wishlist/index.html';
+  if (!fs.existsSync(wlPath)) throw new Error('dist/wishlist/index.html missing');
+  const wlHtml = fs.readFileSync(wlPath, 'utf8');
+  if (!wlHtml.includes('noindex, nofollow')) throw new Error('dist/wishlist/index.html missing noindex meta');
+  if (wlHtml.includes('"@type": "Product"') || wlHtml.includes('"@type": "CollectionPage"')) {
+    throw new Error('dist/wishlist/index.html should not have product or collection schema');
+  }
+
+  // Check Homepage prerendered structure (AF-RM-0003, 0004, 0005, 0006, 0008, 0010, 0013, 0014, 0017)
+  const idxHtml = fs.readFileSync('dist/index.html', 'utf8');
+  if (!idxHtml.includes('<h1 class="f"')) throw new Error('dist/index.html missing H1 headline');
+  if (!idxHtml.includes('<link rel="canonical" href="https://devtoshsuperbazaar.github.io/">')) {
+    throw new Error('dist/index.html missing canonical URL link');
+  }
+  if (!idxHtml.includes('href="#app"') || !idxHtml.includes('class="sk"')) {
+    throw new Error('dist/index.html missing skip link anchor href="#app"');
+  }
+  if (idxHtml.includes('<main class="mn"')) throw new Error('dist/index.html has illegal nested <main class="mn">');
+  if (!idxHtml.includes('<h2 class="pn"')) throw new Error('dist/index.html product cards should use <h2 class="pn">');
+
+  // Verify Women category (AF-RM Soft 404 fix)
+  const womenHtml = fs.readFileSync('dist/category/women/index.html', 'utf8');
+  if (womenHtml.includes('<main class="mn"')) throw new Error('Women category has illegal nested <main class="mn">');
+  if (!womenHtml.includes('Banarasi Soft Silk Zari Woven Saree')) {
+    throw new Error('Women category should contain Banarasi Saree');
+  }
+  // Ensure Kids product is not in Women
+  if (womenHtml.includes('Girls Printed Cotton Summer Frock')) {
+    throw new Error('Girls Frock should not appear in Women category');
+  }
 }
 
 // 9. Verify Link insertion & markdown link parsing
@@ -215,8 +253,8 @@ if (fs.existsSync('dist')) {
   }
 
   const htmlFiles = getAllHtmlFiles('dist').filter(f => !f.includes('/assets/'));
-  if (htmlFiles.length < 40) {
-    throw new Error(`Expected exactly 40 storefront HTML documents in dist/, found ${htmlFiles.length}`);
+  if (htmlFiles.length !== 41) {
+    throw new Error(`Expected exactly 41 storefront HTML documents in dist/, found ${htmlFiles.length}`);
   }
 
   for (const file of htmlFiles) {
