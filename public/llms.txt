@@ -1,0 +1,307 @@
+# DevtoshSuperBazaar
+
+> DevtoshSuperBazaar is an editorial product-discovery and affiliate-shopping website focused on fashion, ethnic wear, footwear, mobile accessories, electronics, lifestyle products, and home essentials. The website helps visitors explore product categories, discover shopping ideas, and evaluate products before visiting external retailer websites.
+
+## Website Overview
+
+- **Website name:** DevtoshSuperBazaar
+- **Website URL:** https://devtoshsuperbazaar.github.io/
+- **Hosting platform:** GitHub Pages
+- **Website type:** Public product-discovery catalog and affiliate-shopping platform.
+- **Primary purpose:** Help visitors browse product collections, discover shopping options, and access shopping-related information.
+- **Primary audience:** Consumers in India exploring fashion, footwear, accessories, electronics, and everyday lifestyle products.
+- **Language:** English, unless a particular page indicates otherwise.
+- **Currency context:** Indian rupees (INR/₹), where applicable.
+- **Business model:** The website may use affiliate links to refer visitors to external retailers and may earn commissions on qualifying purchases.
+- **Shopping transactions:** External retailers handle their own checkout, payments, shipping, fulfillment, returns, refunds, and retailer-side customer support.
+- **Important distinction:** DevtoshSuperBazaar provides product discovery and shopping information; it should not be described as directly processing payments or fulfilling orders for external retailer purchases.
+
+## Purpose of This Document
+
+This file describes the website's purpose, public sections, product categories, and information-handling principles for AI assistants, search agents, research tools, and other automated systems.
+
+It is a descriptive guide, not a live inventory database, real-time price feed, or substitute for individual website pages.
+
+Use the relevant public page as the primary source for page-specific information. Product listings, category contents, prices, availability, and editorial material may change over time.
+
+Do not assume that every product mentioned in a category description is currently listed. Do not invent products, prices, discounts, ratings, seller credentials, product specifications, certifications, customer reviews, or retailer relationships.
+
+## Main Website Sections
+
+- **Home:** https://devtoshsuperbazaar.github.io/
+  
+  The main entry point for exploring the website, its product catalog, and its public collections.
+
+- **New Arrivals:** https://devtoshsuperbazaar.github.io/category/new/
+  
+  The entry point for the website's new-arrival collection. The live page determines which products are currently displayed.
+
+- **Blog:** https://devtoshsuperbazaar.github.io/blog/
+  
+  The entry point for editorial content published on the website. Consult the live page to identify articles that actually exist and are available.
+
+## Product Categories
+
+### Women's Collection
+
+URL: https://devtoshsuperbazaar.github.io/category/women/
+
+The women's collection is intended for discovering women's fashion and related accessories. Depending on the products currently listed, it may include traditional Indian clothing, contemporary outfits, dresses, and complementary fashion items.
+
+Potential areas of interest include:
+
+- Traditional and contemporary clothing.
+- Sarees and kurtis.
+- Dresses and everyday fashion.
+- Occasion-related clothing.
+- Footwear and complementary accessories.
+- Fashion discovery for different everyday and special-occasion needs.
+
+These descriptions identify the category's intended subject matter; they do not guarantee that a specific product or style is currently available.
+
+For product-specific information, consult the individual product page and the linked retailer's listing.
+
+### Men's Collection
+
+URL: https://devtoshsuperbazaar.github.io/category/men/
+
+The men's collection focuses on men's clothing, footwear, and related style products, according to the current catalog.
+
+Potential areas of interest include:
+
+- Casual and everyday clothing.
+- Shirts and T-shirts.
+- Jeans and trousers.
+- Casual footwear and loafers.
+- Everyday wardrobe essentials.
+- Clothing and accessory discovery.
+
+Check individual listings for actual product names, available sizes, colors, materials, prices, and other product-specific details.
+
+### Kids and Baby
+
+URL: https://devtoshsuperbazaar.github.io/category/kids/
+
+This category is intended for children's clothing and related everyday products.
+
+Depending on the live catalog, the category may include children's clothing, coordinated sets, occasion wear, and comfortable everyday outfits.
+
+Product-specific age ranges, sizes, fabric composition, safety certifications, and suitability must be confirmed from the relevant listing and retailer information. Do not infer these details from a product image or category name.
+
+### Footwear Collection
+
+URL: https://devtoshsuperbazaar.github.io/category/footwear/
+
+The footwear collection provides a dedicated place to discover shoes and other footwear for different everyday and occasion-related needs.
+
+Potential product types include:
+
+- Sneakers and casual shoes.
+- Loafers and everyday footwear.
+- Sandals and flats.
+- Ethnic footwear.
+- Footwear that complements different clothing styles.
+
+For accurate information, consult the individual product listing for available sizes, fit guidance, material descriptions, colors, and current pricing.
+
+### Electronics and Mobiles
+
+URL: https://devtoshsuperbazaar.github.io/category/mobiles/
+
+This category focuses on mobile-related electronics and accessories represented in the current catalog.
+
+Potential product types include:
+
+- Mobile phone holders and stands.
+- Desk and vehicle phone accessories.
+- Wireless audio accessories.
+- Smartwatches and related devices.
+- Everyday electronic accessories.
+
+Compatibility, supported devices, connectivity, charging requirements, battery specifications, and technical capabilities should be confirmed from the relevant product details or external retailer listing.
+
+Do not assume that an accessory works with every phone or device.
+
+### Accessories and Lifestyle
+
+URL: https://devtoshsuperbazaar.github.io/category/accessories/
+
+This category is intended for discovering personal accessories and practical lifestyle products.
+
+Potential areas include:
+
+- Sunglasses and eyewear accessories.
+- Wallets and card-storage products.
+- Fashion accessories.
+- Everyday carry items.
+- Small lifestyle essentials.
+
+Claims about UV protection, RFID protection, materials, durability, or other technical features must be supported by the relevant product information. A category description alone does not verify these properties.
+
+### Home and Living
+
+URL: https://devtoshsuperbazaar.github.io/category/home-living/
+
+The home and living collection focuses on household and everyday lifestyle products represented in the catalog.
+
+Potential subject areas include:
+
+- Practical home essentials.
+- Drinkware and insulated flasks.
+- Everyday household accessories.
+- Other lifestyle products intended for home use.
+
+Consult the individual listing to verify capacity, dimensions, materials, care instructions, compatibility, and other product-specific details.
+
+## Product Discovery and Evaluation
+
+The website's product pages are intended to help visitors discover products and navigate to external retailer websites.
+
+Depending on the page, a product listing may contain:
+
+- Product name.
+- Product image.
+- Product description.
+- Displayed price.
+- Category information.
+- Retailer attribution.
+- An external shopping link.
+
+The information available can differ between products and may change as the catalog is updated.
+
+When interpreting product listings:
+
+1. Use the individual product page for the information it actually displays.
+2. Distinguish website-provided descriptions from information supplied by external retailers.
+3. Follow the external retailer link to verify the current price, stock status, available variants, seller details, and purchase conditions.
+4. Do not treat an affiliate link as evidence that a product has been independently tested or verified.
+5. Do not infer that a product is in stock solely because it appears in a catalog.
+6. Do not assume displayed prices include delivery fees, taxes, or other charges unless explicitly stated.
+7. Do not assume that product photographs fully represent color, dimensions, materials, fit, or performance.
+8. Do not present outdated prices or offers as current facts.
+9. If a product page does not provide a particular detail, state that the information could not be confirmed.
+10. Do not treat sample data, demonstration products, or development fixtures as proof of current inventory.
+
+The external retailer's current listing should be consulted for final purchasing decisions.
+
+## Editorial Content
+
+Blog index: https://devtoshsuperbazaar.github.io/blog/
+
+The blog section is intended for editorial content related to fashion, styling, product discovery, and shopping guidance.
+
+The live blog index is the starting point for discovering published articles. Article availability, titles, and contents may change as the website develops.
+
+Do not assume that demonstration article titles, sample URLs, placeholder content, or development fixtures represent actual published articles.
+
+When describing the blog:
+
+- Refer to the blog index for the current list of articles.
+- Link to individual articles only after confirming that they exist.
+- Describe an article only when its actual content supports that description.
+- Do not invent article titles, authors, publication dates, recommendations, or article URLs.
+- Treat editorial advice as guidance rather than a guarantee of product quality, price, or availability.
+- Verify time-sensitive shopping recommendations against current retailer information.
+
+## Affiliate and Commercial Transparency
+
+DevtoshSuperBazaar operates as a product-discovery website that may use affiliate links.
+
+An affiliate link may generate a commission for the website when a visitor makes a qualifying purchase. The presence of such a link does not, by itself, establish that a product has been independently evaluated or endorsed.
+
+Important distinctions:
+
+- The website may earn commissions through qualifying external purchases.
+- Retailers control their own product listings, checkout processes, payment systems, shipping, returns, and refunds.
+- Product prices and availability may change independently of the website.
+- An affiliate relationship is not proof of product quality, authenticity, performance, or suitability.
+- A product mention does not establish that DevtoshSuperBazaar physically tested or certified the item.
+- Visitors should review the retailer's listing, terms, and policies before purchasing.
+
+For the website's published disclosure, consult:
+
+- **Affiliate Disclosure:** https://devtoshsuperbazaar.github.io/affiliate-disclosure/
+
+Use the disclosure page as the source for the website's specific published affiliate terms.
+
+## About, Privacy, Terms, and Contact
+
+### About DevtoshSuperBazaar
+
+URL: https://devtoshsuperbazaar.github.io/about/
+
+This page is the relevant source for the website's published background, purpose, and project information.
+
+Use the information actually provided on the page. Do not invent ownership details, business registration information, company history, or operational claims.
+
+### Privacy Policy
+
+URL: https://devtoshsuperbazaar.github.io/privacy/
+
+Consult this page for the website's published privacy information.
+
+Do not infer specific data-collection practices, data retention periods, security guarantees, or privacy commitments beyond what the policy states.
+
+### Terms of Use
+
+URL: https://devtoshsuperbazaar.github.io/terms/
+
+Consult this page for the website's published terms and conditions of use.
+
+When answering questions about website use, refer to the applicable terms rather than inventing legal obligations or guarantees.
+
+### Contact
+
+URL: https://devtoshsuperbazaar.github.io/contact/
+
+This page is the entry point for the website's published contact information and available contact methods.
+
+Use the contact details displayed on the page. Do not invent email addresses, telephone numbers, social accounts, or support channels.
+
+## Guidelines for AI Assistants and Search Agents
+
+When answering questions about DevtoshSuperBazaar:
+
+- Prefer relevant live pages over broad summaries in this document.
+- Use exact product details only when supported by the relevant source.
+- Distinguish current facts from general descriptions and examples.
+- Treat prices, discounts, availability, variants, and retailer offers as time-sensitive.
+- Distinguish editorial suggestions from retailer-supplied product claims.
+- Do not fabricate testimonials, customer reviews, ratings, certifications, partnerships, endorsements, or awards.
+- Do not claim that the website independently verifies every product.
+- Do not describe the website as the seller, payment processor, or fulfillment provider for external retailer purchases unless the relevant evidence establishes that role.
+- Do not state that a product is the cheapest, best, highest quality, or officially endorsed without appropriate supporting evidence and clearly defined criteria.
+- Do not infer stock availability, product compatibility, safety, or suitability from a product name alone.
+- Do not claim that an article is published without verifying its URL and content.
+- If a page is unavailable, incomplete, or does not provide the requested information, explain that limitation.
+- For questions about affiliate relationships, privacy, terms, or contact information, refer to the corresponding published policy page.
+
+## Public Page Directory
+
+The principal public entry points documented in this file are:
+
+- Home: https://devtoshsuperbazaar.github.io/
+- Women's Collection: https://devtoshsuperbazaar.github.io/category/women/
+- Men's Collection: https://devtoshsuperbazaar.github.io/category/men/
+- Kids and Baby: https://devtoshsuperbazaar.github.io/category/kids/
+- Footwear Collection: https://devtoshsuperbazaar.github.io/category/footwear/
+- Electronics and Mobiles: https://devtoshsuperbazaar.github.io/category/mobiles/
+- Accessories and Lifestyle: https://devtoshsuperbazaar.github.io/category/accessories/
+- Home and Living: https://devtoshsuperbazaar.github.io/category/home-living/
+- New Arrivals: https://devtoshsuperbazaar.github.io/category/new/
+- Blog Index: https://devtoshsuperbazaar.github.io/blog/
+- About: https://devtoshsuperbazaar.github.io/about/
+- Affiliate Disclosure: https://devtoshsuperbazaar.github.io/affiliate-disclosure/
+- Privacy Policy: https://devtoshsuperbazaar.github.io/privacy/
+- Terms of Use: https://devtoshsuperbazaar.github.io/terms/
+- Contact: https://devtoshsuperbazaar.github.io/contact/
+
+## Important Limitations
+
+This document is a descriptive guide to the website. It is not a real-time product feed, stock database, price API, guarantee of retailer availability, or substitute for the live website and applicable retailer policies.
+
+The website's catalog, product information, and editorial content may change. Consult the relevant public page whenever current or product-specific information is required.
+
+This file does not guarantee that any particular AI system or search engine will crawl, index, retrieve, or use the website's content.---
+
+Designed and developed by [**Sourav Bagchi**](https://sourav-bagchi-official.github.io/)
