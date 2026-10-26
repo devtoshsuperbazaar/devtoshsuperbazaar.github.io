@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp, deleteApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, Firestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, Firestore } from 'firebase/firestore';
 import baseConfig from '../firebase-applet-config.json';
 
 export interface FirebaseConfigType {
@@ -50,10 +50,23 @@ export function getEffectiveFirebaseConfig(): FirebaseConfigType {
 
 let activeConfig = getEffectiveFirebaseConfig();
 
+function initDb(targetApp: FirebaseApp): Firestore {
+  if (typeof window !== 'undefined') {
+    try {
+      return initializeFirestore(targetApp, {
+        experimentalForceLongPolling: true,
+      });
+    } catch (_) {
+      return getFirestore(targetApp);
+    }
+  }
+  return getFirestore(targetApp);
+}
+
 // Prevent duplicate initialization across development hot reloads
 export let app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(activeConfig);
 export let auth: Auth = getAuth(app);
-export let db: Firestore = getFirestore(app);
+export let db: Firestore = initDb(app);
 
 const reconfigListeners: Array<(cfg: FirebaseConfigType) => void> = [];
 
@@ -87,7 +100,7 @@ export async function reinitializeFirebase(newConfig?: Partial<FirebaseConfigTyp
 
   app = initializeApp(activeConfig);
   auth = getAuth(app);
-  db = getFirestore(app);
+  db = initDb(app);
 
   for (const fn of reconfigListeners) {
     try {
@@ -191,22 +204,4 @@ export async function saveAndApplyApiKey(newKey: string): Promise<{ success: boo
 
 export function getCurrentFirebaseConfig(): FirebaseConfigType {
   return activeConfig;
-}
-
-// Connection test helper
-export async function testConnection(): Promise<{ connected: boolean; message: string }> {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    return { connected: true, message: 'Cloud Firestore connected successfully.' };
-  } catch (error: any) {
-    const msg = error?.message || String(error);
-    if (msg.includes('offline') || msg.includes('unavailable')) {
-      return { connected: false, message: 'Firestore is currently offline or unreachable.' };
-    }
-    if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
-      // Permission denied on test/connection is expected if rules restrict access; Firestore itself is reachable!
-      return { connected: true, message: 'Firestore is reachable (security rules active).' };
-    }
-    return { connected: false, message: msg };
-  }
 }
