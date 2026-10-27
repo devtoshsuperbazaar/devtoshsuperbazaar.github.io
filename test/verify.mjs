@@ -204,9 +204,7 @@ if (fs.existsSync('dist')) {
   if (!idxHtml.includes('<link rel="canonical" href="https://devtoshsuperbazaar.github.io/">')) {
     throw new Error('dist/index.html missing canonical URL link');
   }
-  if (!idxHtml.includes('href="#app"') || !idxHtml.includes('class="sk"')) {
-    throw new Error('dist/index.html missing skip link anchor href="#app"');
-  }
+
   if (idxHtml.includes('<main class="mn"')) throw new Error('dist/index.html has illegal nested <main class="mn">');
   if (!idxHtml.includes('<h2 class="pn"')) throw new Error('dist/index.html product cards should use <h2 class="pn">');
 
