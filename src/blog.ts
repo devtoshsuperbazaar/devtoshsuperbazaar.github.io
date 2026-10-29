@@ -13,16 +13,100 @@ function inr(n: number): string {
   return '₹' + Number(n).toLocaleString('en-IN');
 }
 
+export function sanitizeUrl(url: string, isImage: boolean = false): string {
+  if (!url) return '';
+  const trimmed = url.trim().replace(/[\x00-\x1f\x7f-\x9f]/g, '');
+  if (/^(javascript|vbscript|data|file):/i.test(trimmed)) {
+    return isImage ? '' : '#unsafe-link';
+  }
+  if (/^https?:\/\//i.test(trimmed) || /^\//.test(trimmed) || /^#/.test(trimmed) || (!isImage && /^(mailto|tel):/i.test(trimmed))) {
+    return trimmed;
+  }
+  return isImage ? '' : '#unsafe-link';
+}
+
+export function stripDangerousHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+    .replace(/<embed\b[^>]*>/gi, '')
+    .replace(/<applet\b[^>]*>/gi, '')
+    .replace(/on\w+\s*=\s*(?:["'][^"']*["']|[^\s>]+)/gi, '');
+}
+
+export function formatInline(str: string): string {
+  if (!str) return '';
+  let s = stripDangerousHtml(str);
+
+  // Markdown images: ![alt](url)
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, url) => {
+    const cleanUrl = sanitizeUrl(url, true);
+    if (!cleanUrl) return '';
+    return `<figure class="art-body-fig" style="margin:20px 0;text-align:center"><img src="${esc(cleanUrl)}" alt="${esc(alt)}" loading="lazy" style="max-width:100%;height:auto;border-radius:4px;border:1px solid var(--bd)" />${alt ? `<figcaption class="art-cover-cap" style="margin-top:6px;font-size:12px;color:var(--mu);font-style:italic">${esc(alt)}</figcaption>` : ''}</figure>`;
+  });
+
+  // Markdown links: [text](url)
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, url) => {
+    const cleanUrl = sanitizeUrl(url, false);
+    return `<a href="${esc(cleanUrl)}" rel="noopener noreferrer">${text}</a>`;
+  });
+
+  // Bold & Italic
+  s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__(.*?)__/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  s = s.replace(/_(.*?)_/g, '<em>$1</em>');
+
+  // Inline code & Strikethrough
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+  return s;
+}
+
 export function parseMarkdownToHtml(md: string): string {
   if (!md) return '';
-  const lines = md.trim().split('\n');
+  let cleanMd = md;
+  // Safely strip frontmatter if present
+  if (cleanMd.startsWith('---')) {
+    const fmEnd = cleanMd.indexOf('---', 3);
+    if (fmEnd !== -1) {
+      cleanMd = cleanMd.slice(fmEnd + 3).trim();
+    }
+  }
+
+  const lines = cleanMd.trim().split('\n');
   const out: string[] = [];
   let inUl = false;
   let inOl = false;
+  let inCodeBlock = false;
+  let codeBlockLines: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const trimmed = raw.trim();
+
+    // Multi-line code blocks ```
+    if (trimmed.startsWith('```')) {
+      if (inCodeBlock) {
+        out.push(`<pre class="art-code-block" style="background:var(--bl);padding:14px 18px;border-radius:4px;overflow-x:auto;border:1px solid var(--bd);margin:18px 0;font-size:13px;line-height:1.5"><code>${esc(codeBlockLines.join('\n'))}</code></pre>`);
+        inCodeBlock = false;
+        codeBlockLines = [];
+      } else {
+        if (inUl) { out.push('</ul>'); inUl = false; }
+        if (inOl) { out.push('</ol>'); inOl = false; }
+        inCodeBlock = true;
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBlockLines.push(raw);
+      continue;
+    }
 
     if (!trimmed) {
       if (inUl) { out.push('</ul>'); inUl = false; }
@@ -30,10 +114,17 @@ export function parseMarkdownToHtml(md: string): string {
       continue;
     }
 
-    if (trimmed === '---') {
+    if (trimmed === '---' || trimmed === '***') {
       if (inUl) { out.push('</ul>'); inUl = false; }
       if (inOl) { out.push('</ol>'); inOl = false; }
       out.push('<hr class="art-divider" />');
+      continue;
+    }
+
+    if (trimmed.startsWith('#### ')) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      out.push(`<h4>${formatInline(trimmed.slice(5))}</h4>`);
       continue;
     }
 
@@ -84,19 +175,141 @@ export function parseMarkdownToHtml(md: string): string {
     out.push(`<p>${formatInline(trimmed)}</p>`);
   }
 
+  if (inCodeBlock) {
+    out.push(`<pre class="art-code-block" style="background:var(--bl);padding:14px 18px;border-radius:4px;overflow-x:auto;border:1px solid var(--bd);margin:18px 0;font-size:13px;line-height:1.5"><code>${esc(codeBlockLines.join('\n'))}</code></pre>`);
+  }
   if (inUl) out.push('</ul>');
   if (inOl) out.push('</ol>');
 
   return out.join('\n');
 }
 
-function formatInline(str: string): string {
-  return str
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" rel="noopener noreferrer">$1</a>');
+export interface ParsedMarkdownFrontmatter {
+  title?: string;
+  slug?: string;
+  category?: string;
+  excerpt?: string;
+  authorName?: string;
+  authorUrl?: string;
+  coverImage?: string;
+  coverImageAlt?: string;
+  tags?: string[];
+  published?: boolean;
+  canonicalUrl?: string;
+  content: string;
+  hasFrontmatter: boolean;
 }
+
+export function parseMarkdownWithFrontmatter(rawText: string): ParsedMarkdownFrontmatter {
+  const result: ParsedMarkdownFrontmatter = {
+    content: rawText,
+    hasFrontmatter: false
+  };
+
+  if (!rawText) return result;
+
+  const trimmed = rawText.trim();
+  if (!trimmed.startsWith('---')) {
+    const firstLineMatch = trimmed.match(/^#\s+(.+)$/m);
+    if (firstLineMatch) {
+      result.title = firstLineMatch[1].trim();
+    }
+    return result;
+  }
+
+  const fmEnd = trimmed.indexOf('---', 3);
+  if (fmEnd === -1) return result;
+
+  const fmText = trimmed.slice(3, fmEnd).trim();
+  const bodyText = trimmed.slice(fmEnd + 3).trim();
+
+  result.hasFrontmatter = true;
+  result.content = bodyText;
+
+  const lines = fmText.split('\n');
+  for (const line of lines) {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim().toLowerCase();
+    let val = line.slice(colonIdx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1).trim();
+    }
+
+    if (key === 'title') result.title = val;
+    else if (key === 'slug') result.slug = generateArticleSlug(val);
+    else if (key === 'category') result.category = val;
+    else if (key === 'excerpt' || key === 'summary' || key === 'description') result.excerpt = val;
+    else if (key === 'author' || key === 'authorname') result.authorName = val;
+    else if (key === 'authorurl') result.authorUrl = val;
+    else if (key === 'cover' || key === 'coverimage' || key === 'image') result.coverImage = val;
+    else if (key === 'coveralt' || key === 'coverimagealt' || key === 'imagealt') result.coverImageAlt = val;
+    else if (key === 'canonical' || key === 'canonicalurl') result.canonicalUrl = val;
+    else if (key === 'tags') {
+      if (val.startsWith('[') && val.endsWith(']')) {
+        try {
+          result.tags = JSON.parse(val);
+        } catch {
+          result.tags = val.slice(1, -1).split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+        }
+      } else {
+        result.tags = val.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    } else if (key === 'published') {
+      result.published = val.toLowerCase() === 'true' || val === '1';
+    }
+  }
+
+  return result;
+}
+
+export const AI_BLOG_PROMPT_TEMPLATE = `You are an expert fashion and lifestyle editor writing for DevTosh Superbazaar (devtoshsuperbazaar.github.io), an independent curated online catalog for ethnic wear, menswear, footwear, smartphones, mobile accessories, and lifestyle essentials from top Indian marketplaces (Meesho, Amazon, Flipkart).
+
+Write a compelling, high-quality shopping guide article in Markdown format with the EXACT YAML frontmatter structure shown below:
+
+---
+title: "[Insert Engaging 50-60 Char Article Title]"
+slug: "[auto-generated-kebab-case-slug]"
+category: "Style Guides"
+excerpt: "[Engaging 1-2 sentence summary explaining key takeaways, 120-150 characters]"
+coverImage: "https://images.unsplash.com/photo-[relevant-photo-id]?auto=format&fit=crop&w=1200&q=80"
+coverImageAlt: "[Descriptive accessible description of cover image]"
+tags: [tag1, tag2, tag3, tag4]
+author: "DevTosh Superbazaar Editorial Team"
+published: true
+---
+
+# [Article Title]
+
+[Engaging opening paragraph establishing reader pain point, practical value, and budget-friendly curation context under ₹499 - ₹1,499.]
+
+---
+
+## 1. [Section Title 1]
+
+[Detailed practical advice. Highlight key fabric types, fit criteria, or tech specifications.]
+
+- **[Key Point 1]:** [Clear explanation]
+- **[Key Point 2]:** [Clear explanation]
+
+> *Affiliate Disclosure: DevTosh Superbazaar independently curates products. When you buy through our links, we may earn an affiliate commission at no extra cost to you.*
+
+---
+
+## 2. [Section Title 2]
+
+[Actionable styling tips, pairing ideas, or shopping checks on trusted platforms like Meesho.]
+
+### Essential Checklist
+1. **[Check 1]:** [Explanation]
+2. **[Check 2]:** [Explanation]
+
+---
+
+## Conclusion & Smart Shopping Rules
+
+[Final summary and recommendations encouraging thoughtful, value-first shopping.]
+`;
 
 export function generateArticleSlug(title: string): string {
   return (title || 'article')
@@ -829,6 +1042,46 @@ export function renderArticleForm(
 
             <!-- Card 2: Article Writing Area with Interactive Toolbar & Add Link Modal -->
             <div class="adm-card" style="padding:22px;margin-bottom:20px">
+              <!-- Markdown & AI Publishing Workflow Header -->
+              <div style="background:var(--bl);border:1px solid var(--bd);border-radius:4px;padding:14px 16px;margin-bottom:16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+                  <div>
+                    <strong style="color:var(--dp);font-size:13.5px;display:flex;align-items:center;gap:6px">
+                      <span>🤖 Markdown &amp; AI Authoring Tools</span>
+                    </strong>
+                    <div class="mu" style="font-size:12px;margin-top:2px">
+                      Paste Markdown directly or import a <code>.md</code> file. Frontmatter metadata is automatically mapped to form fields.
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <input type="file" id="art-file-import-input" accept=".md,.markdown,text/markdown,text/plain" style="display:none" />
+                    <button type="button" id="art-file-import-btn" class="adm-btn-sec" style="font-size:12px;padding:6px 12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer" title="Import an article from a local .md or text file">
+                      <span>📁 Import .md File</span>
+                    </button>
+                    <button type="button" id="art-extract-fm-btn" class="adm-btn-sec" style="font-size:12px;padding:6px 12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer" title="Auto-fill Title, Slug, Excerpt, and Category from frontmatter in the text area">
+                      <span>⚡ Auto-Fill from Content</span>
+                    </button>
+                    <button type="button" id="art-copy-prompt-btn" class="adm-btn-sec" style="font-size:12px;padding:6px 12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer" title="Copy the exact AI prompt template for generating Devtosh SuperBazaar articles in Gemini, ChatGPT, or Claude">
+                      <span>📋 Copy AI Prompt</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Status alert message for import actions -->
+                <div id="art-import-status" style="display:none;font-size:12.5px;padding:8px 12px;border-radius:4px;margin-bottom:8px"></div>
+
+                <!-- Expandable Guide & Copyable AI Prompt Template -->
+                <details style="font-size:12px;color:var(--tx);margin-top:6px">
+                  <summary style="cursor:pointer;color:var(--wn);font-weight:600;padding:2px 0">
+                    💡 View AI Prompt Template &amp; Frontmatter Guide (Compatible with Gemini, Claude &amp; ChatGPT)
+                  </summary>
+                  <div style="margin-top:8px;padding:12px;background:var(--sf);border:1px solid var(--bd);border-radius:4px;line-height:1.6">
+                    <p style="margin:0 0 8px">Copy the template below to generate perfectly formatted blog articles for DevTosh Superbazaar. The built-in parser extracts YAML frontmatter (between <code>---</code>) and populates the title, slug, category, excerpt, tags, and author automatically!</p>
+                    <pre style="background:var(--bl);border:1px solid var(--bd);padding:10px 12px;border-radius:4px;overflow-x:auto;font-size:11.5px;line-height:1.45;color:var(--dp);margin:0"><code>${esc(AI_BLOG_PROMPT_TEMPLATE)}</code></pre>
+                  </div>
+                </details>
+              </div>
+
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                 <h2 style="font-size:16px;margin:0;font-weight:700;color:var(--dp)">2. Article Story &amp; Content</h2>
                 <!-- Write / Preview Mode Switcher -->
