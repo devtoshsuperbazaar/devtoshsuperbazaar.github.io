@@ -11,12 +11,17 @@
 </script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DevtoshSuperBazaar — Curated Fashion, Mobiles &amp; Lifestyle Discovery</title>
-<meta name="description" content="Editorial discovery catalog and affiliate shopping platform for women's, men's, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by Devtosh SuperBazaar.">
-<meta property="og:title" content="DevtoshSuperBazaar — Curated Fashion, Mobiles &amp; Lifestyle Discovery">
-<meta property="og:description" content="Editorial discovery catalog and affiliate shopping platform for women's, men's, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by Devtosh SuperBazaar.">
+<title>DevTosh Superbazaar — Curated Fashion, Mobiles &amp; Lifestyle Discovery</title>
+<meta name="description" content="Editorial discovery catalog and affiliate shopping platform for women's, men's, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by DevTosh Superbazaar.">
+<link rel="canonical" href="https://devtoshsuperbazaar.github.io/">
+<meta property="og:title" content="DevTosh Superbazaar — Curated Fashion, Mobiles &amp; Lifestyle Discovery">
+<meta property="og:description" content="Editorial discovery catalog and affiliate shopping platform for women's, men's, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by DevTosh Superbazaar.">
+<meta property="og:url" content="https://devtoshsuperbazaar.github.io/">
+<meta property="og:image" content="https://devtoshsuperbazaar.github.io/apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://devtoshsuperbazaar.github.io/apple-touch-icon.png">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta name="theme-color" content="#59363A">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32">
@@ -30,18 +35,18 @@
     {
       "@type": "Organization",
       "@id": "https://devtoshsuperbazaar.github.io/#organization",
-      "name": "DevtoshSuperBazaar",
+      "name": "DevTosh Superbazaar",
       "url": "https://devtoshsuperbazaar.github.io",
       "logo": "https://devtoshsuperbazaar.github.io/favicon-48x48.png",
       "sameAs": [
-        "https://www.instagram.com/devsharanyadav4"
+        "https://www.instagram.com/devtoshsuperbazaar/"
       ]
     },
     {
       "@type": "WebSite",
       "@id": "https://devtoshsuperbazaar.github.io/#website",
       "url": "https://devtoshsuperbazaar.github.io",
-      "name": "DevtoshSuperBazaar",
+      "name": "DevTosh Superbazaar",
       "description": "Curated fashion, smartphones, mobile accessories, footwear and lifestyle affiliate discovery.",
       "publisher": {
         "@id": "https://devtoshsuperbazaar.github.io/#organization"
@@ -113,6 +118,7 @@ button{cursor:pointer}
 :focus-visible{outline:2px solid var(--wn);outline-offset:2px}
 h1:focus,#app:focus{outline:0}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.sk{position:absolute;left:8px;top:-80px;z-index:99;border:0;padding:12px 18px;color:#fff;background:var(--sat);font-weight:600;transition:top .2s ease}.sk:focus{top:8px}
 .top{background:var(--bl);color:var(--dp);font-size:12.5px;text-align:center;padding:9px 16px;letter-spacing:.02em;line-height:1.4}
 .w{max-width:1400px;margin:0 auto;padding:0 40px}
 .f{font-family:'Bodoni Moda',Georgia,serif}
@@ -134,6 +140,7 @@ h1:focus,#app:focus{outline:0}
 .lg-t{display:inline-flex;align-items:baseline;font-family:'Bodoni Moda',Georgia,serif;font-size:clamp(20px,2.1vw,25px);line-height:1;letter-spacing:.01em;white-space:nowrap;font-optical-sizing:auto}
 .lg-a{font-weight:500;color:var(--dp)}
 .lg-b{font-style:italic;font-weight:400;color:var(--wn);margin-left:.04em}
+.lg-t-accent{color:#D6A54A;font-weight:600}
 @media(max-width:520px){
   .lg{gap:9px}.lg-mark{width:34px;height:34px}
   .lg-t{flex-direction:column;align-items:flex-start;font-size:16px;line-height:1.08}
@@ -560,6 +567,29 @@ textarea.adm-input{height:auto;padding:10px 12px}
   .fi nav a,.fi nav span{min-height:36px;font-size:12.5px}
   .f-cred-wrap{padding:14px 0 20px}
 }
+.faqs-sec{margin:44px auto;padding:32px 0;border-top:1px solid var(--bd)}
+.faqs-title{font-size:clamp(22px,2.8vw,30px);color:var(--dp);margin:0 0 10px;font-family:'Bodoni Moda',Georgia,serif;font-weight:600}
+.faqs-lead{color:var(--mu);margin:0 0 24px;font-size:14px;line-height:1.55;max-width:700px}
+.faqs-list{border:1px solid var(--bd);border-radius:8px;background:var(--sf);overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.03)}
+.faq-item{border-bottom:1px solid var(--bd);transition:background .2s ease}
+.faq-item:last-child{border-bottom:none}
+.faq-item[open]{background:rgba(134,83,86,.04)}
+.faq-q{cursor:pointer;font-weight:600;font-size:15px;color:var(--tx);display:flex;justify-content:space-between;align-items:center;list-style:none;padding:16px 20px;user-select:none;transition:background .15s ease,color .15s ease}
+.faq-q::-webkit-details-marker{display:none}
+.faq-q:hover{color:var(--wn);background:rgba(134,83,86,.035)}
+.faq-q:active{background:rgba(134,83,86,.07)}
+.faq-q:focus-visible{outline:2px solid var(--wn);outline-offset:-2px}
+.faq-q-text{flex:1;padding-right:14px;line-height:1.45}
+.faq-chevron{width:18px;height:18px;flex:none;color:var(--wn);transition:transform .25s cubic-bezier(0.4,0,0.2,1)}
+.faq-item[open] .faq-chevron{transform:rotate(180deg);color:var(--dp)}
+@media(prefers-reduced-motion:reduce){
+  .faq-chevron{transition:none}
+  .faq-item{transition:none}
+}
+.faq-a{margin:0;padding:0 20px 18px;font-size:14px;line-height:1.65;color:var(--mu);max-width:760px}
+@keyframes shimmer{0%{opacity:.45}50%{opacity:.95}100%{opacity:.45}}
+.pc-skel{pointer-events:none}
+.pc-skel .ph{animation:shimmer 1.5s ease-in-out infinite}
 </style>
 </head>
 <body>
@@ -582,7 +612,7 @@ textarea.adm-input{height:auto;padding:10px 12px}
 <symbol id="cp" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
 </defs></svg>
 <div class="top" role="region" aria-label="Curated catalogue announcement">
-  <strong>Curated online catalogue:</strong> Handpicked fashion, mobiles, footwear &amp; lifestyle discovery by Devtosh SuperBazaar.
+  <strong>Curated online catalogue:</strong> Handpicked fashion, mobiles, footwear &amp; lifestyle discovery by DevTosh Superbazaar.
 </div>
 <header>
 <div class="w hd">
@@ -593,9 +623,9 @@ textarea.adm-input{height:auto;padding:10px 12px}
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
   </button>
 </form>
-<a class="lg" href="/" aria-label="DevtoshSuperBazaar home">
+<a class="lg" href="/" aria-label="DevTosh Superbazaar home">
   <img class="lg-mark" src="/favicon-48x48.png" srcset="/favicon-48x48.png 1x, /apple-touch-icon.png 2x" width="38" height="38" alt="" aria-hidden="true" style="border-radius:8px;object-fit:cover;flex:none;display:block" />
-  <span class="lg-t"><span class="lg-a">Devtosh</span><span class="lg-b">SuperBazaar</span></span>
+  <span class="lg-t"><span class="lg-a">Dev<span class="lg-t-accent">T</span>osh</span> <span class="lg-b">Superbazaar</span></span>
 </a>
 <div class="hr">
   
@@ -604,7 +634,7 @@ textarea.adm-input{height:auto;padding:10px 12px}
     <span>Wishlist</span>
     <i class="bd" id="wc" aria-label="items in wishlist">0</i>
   </a>
-  <a class="ab" href="https://www.instagram.com/devsharanyadav4" target="_blank" rel="noopener noreferrer" aria-label="Follow DevtoshSuperBazaar on Instagram" title="Instagram">
+  <a class="ab" href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" aria-label="Follow DevTosh Superbazaar on Instagram" title="Instagram">
     <svg aria-hidden="true"><use href="#ig"/></svg>
     <span>Instagram</span>
   </a>
@@ -630,8 +660,8 @@ textarea.adm-input{height:auto;padding:10px 12px}
   <a data-n="new" href="/category/new/"><span>New Arrivals</span></a>
   <a data-n="blog" href="/blog/"><span>Blog &amp; Style Guides</span></a>
   <div class="nv-divider"></div>
-  <a class="m" href="https://www.instagram.com/devsharanyadav4" target="_blank" rel="noopener noreferrer"><span>Instagram (@devsharanyadav4)</span></a>
-  <a class="m" data-n="about" href="/about/"><span>About Devtosh SuperBazaar</span></a>
+  <a class="m" href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer"><span>Instagram (@devtoshsuperbazaar)</span></a>
+  <a class="m" data-n="about" href="/about/"><span>About DevTosh Superbazaar</span></a>
   <a class="m" data-n="wishlist" href="/wishlist/"><span>My Wishlist</span></a>
 </nav>
 <div class="mob-strip" aria-label="Fast category switcher">
@@ -653,8 +683,8 @@ textarea.adm-input{height:auto;padding:10px 12px}
 <footer>
 <div class="w fi">
   <div>
-    <div class="f" style="font-size:18px;letter-spacing:.12em;text-transform:uppercase">Devtosh SuperBazaar</div>
-    <p>Curated fashion, electronics &amp; lifestyle affiliate discovery by Devtosh SuperBazaar. Discover top trending collections from Meesho and trusted partner retailers. <a href="/affiliate-disclosure/" style="text-decoration:underline">Read the affiliate disclosure</a>.</p>
+    <div class="f" style="font-size:18px;letter-spacing:.12em;text-transform:uppercase">DevTosh Superbazaar</div>
+    <p>Curated fashion, electronics &amp; lifestyle affiliate discovery by DevTosh Superbazaar. Discover top trending collections from Meesho and trusted partner retailers. <a href="/affiliate-disclosure/" style="text-decoration:underline">Read the affiliate disclosure</a>.</p>
   </div>
   <nav aria-label="Footer navigation">
     <a href="/blog/">Editorial Blog</a>
@@ -664,9 +694,9 @@ textarea.adm-input{height:auto;padding:10px 12px}
     <a href="/privacy/">Privacy Policy</a>
     <a href="/terms/">Terms</a>
     <a href="#/admin/dashboard" style="color:var(--wn);font-weight:600">Admin Panel</a>
-    <a href="https://www.instagram.com/devsharanyadav4" target="_blank" rel="noopener noreferrer" aria-label="Follow DevtoshSuperBazaar on Instagram" style="display:inline-flex;align-items:center;gap:6px">
+    <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" aria-label="Follow DevTosh Superbazaar on Instagram" style="display:inline-flex;align-items:center;gap:6px">
       <svg width="16" height="16" aria-hidden="true" style="stroke:currentColor;fill:none;stroke-width:1.8"><use href="#ig"/></svg>
-      <span>@devsharanyadav4</span>
+      <span>@devtoshsuperbazaar</span>
     </a>
   </nav>
 </div>
