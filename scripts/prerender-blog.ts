@@ -15,12 +15,58 @@ import {
   isHomeLivingProduct
 } from '../src/productData.ts';
 import { SEED_ARTICLES, Article, formatBlogDate, calculateReadTime } from '../src/blogData.ts';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
+import baseConfig from '../firebase-applet-config.json' with { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.resolve(ROOT_DIR, 'dist');
 const BASE_ORIGIN = 'https://devtoshsuperbazaar.github.io';
+
+async function fetchLiveProductsFromFirestore(): Promise<Product[]> {
+  try {
+    const app = getApps().length > 0 ? getApp() : initializeApp(baseConfig);
+    const db = getFirestore(app);
+    const q = query(collection(db, 'products'), where('published', '==', true));
+    const snap = await getDocs(q);
+    const items: Product[] = [];
+    snap.forEach(d => {
+      const data = d.data();
+      items.push({
+        id: d.id,
+        slug: data.slug || d.id,
+        name: data.name || 'Untitled Product',
+        brand: data.brand || 'DevTosh Superbazaar Curated',
+        cat: data.cat || 'Essentials',
+        subcat: data.subcat || '',
+        price: Number(data.price || 0),
+        mrp: Number(data.mrp || 0),
+        currency: data.currency || 'INR',
+        col: data.col || 'Neutral',
+        sizes: Array.isArray(data.sizes) ? data.sizes : (typeof data.sizes === 'string' ? data.sizes.split(',') : ['One size']),
+        ret: data.ret || 'Partner Retailer',
+        retUrl: data.retUrl || '',
+        affUrl: data.affUrl || '',
+        imgUrl: data.imgUrl || '',
+        desc: data.desc || '',
+        published: true,
+        featured: !!data.featured,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        isDemo: false
+      });
+    });
+    if (items.length > 0) {
+      console.log(`[SSG Prerender] Fetched ${items.length} live products from Cloud Firestore for homepage.`);
+      return items;
+    }
+  } catch (err) {
+    console.warn('[SSG Prerender] Could not connect to Firestore during build, using fallback:', err);
+  }
+  return [];
+}
 
 function esc(str: string = ''): string {
   return String(str)
@@ -40,15 +86,109 @@ function disc(p: { price: number; mrp?: number }): number {
   return Math.round(((p.mrp - p.price) / p.mrp) * 100);
 }
 
+function sanitizeUrl(url: string, isImage: boolean = false): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('javascript:') ||
+    lower.startsWith('vbscript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('file:')
+  ) {
+    return '#';
+  }
+  if (isImage) {
+    if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('/')) {
+      return trimmed;
+    }
+    return '';
+  }
+  return trimmed;
+}
+
+function stripDangerousHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+    .replace(/<embed\b[^>]*>/gi, '')
+    .replace(/<applet\b[^>]*>/gi, '')
+    .replace(/on\w+\s*=\s*(?:["'][^"']*["']|[^\s>]+)/gi, '');
+}
+
+function formatInline(str: string): string {
+  if (!str) return '';
+  let s = stripDangerousHtml(str);
+
+  // Markdown images: ![alt](url)
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, url) => {
+    const cleanUrl = sanitizeUrl(url, true);
+    if (!cleanUrl) return '';
+    return `<figure class="art-body-fig" style="margin:20px 0;text-align:center"><img src="${esc(cleanUrl)}" alt="${esc(alt)}" loading="lazy" style="max-width:100%;height:auto;border-radius:4px;border:1px solid var(--bd)" />${alt ? `<figcaption class="art-cover-cap" style="margin-top:6px;font-size:12px;color:var(--mu);font-style:italic">${esc(alt)}</figcaption>` : ''}</figure>`;
+  });
+
+  // Markdown links: [text](url)
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, url) => {
+    const cleanUrl = sanitizeUrl(url, false);
+    return `<a href="${esc(cleanUrl)}" rel="noopener noreferrer">${text}</a>`;
+  });
+
+  // Bold & Italic
+  s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__(.*?)__/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  s = s.replace(/_(.*?)_/g, '<em>$1</em>');
+
+  // Inline code & Strikethrough
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+  return s;
+}
+
 function parseMarkdownToHtml(md: string): string {
-  const lines = md.trim().split('\n');
+  if (!md) return '';
+  let cleanMd = md;
+  // Safely strip frontmatter if present
+  if (cleanMd.startsWith('---')) {
+    const fmEnd = cleanMd.indexOf('---', 3);
+    if (fmEnd !== -1) {
+      cleanMd = cleanMd.slice(fmEnd + 3).trim();
+    }
+  }
+
+  const lines = cleanMd.trim().split('\n');
   const out: string[] = [];
   let inUl = false;
   let inOl = false;
+  let inCodeBlock = false;
+  let codeBlockLines: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const trimmed = raw.trim();
+
+    // Multi-line code blocks ```
+    if (trimmed.startsWith('```')) {
+      if (inCodeBlock) {
+        out.push(`<pre class="art-code-block" style="background:var(--bl);padding:14px 18px;border-radius:4px;overflow-x:auto;border:1px solid var(--bd);margin:18px 0;font-size:13px;line-height:1.5"><code>${esc(codeBlockLines.join('\n'))}</code></pre>`);
+        inCodeBlock = false;
+        codeBlockLines = [];
+      } else {
+        if (inUl) { out.push('</ul>'); inUl = false; }
+        if (inOl) { out.push('</ol>'); inOl = false; }
+        inCodeBlock = true;
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBlockLines.push(raw);
+      continue;
+    }
 
     if (!trimmed) {
       if (inUl) { out.push('</ul>'); inUl = false; }
@@ -56,10 +196,17 @@ function parseMarkdownToHtml(md: string): string {
       continue;
     }
 
-    if (trimmed === '---') {
+    if (trimmed === '---' || trimmed === '***') {
       if (inUl) { out.push('</ul>'); inUl = false; }
       if (inOl) { out.push('</ol>'); inOl = false; }
       out.push('<hr class="art-divider" />');
+      continue;
+    }
+
+    if (trimmed.startsWith('#### ')) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      out.push(`<h4>${formatInline(trimmed.slice(5))}</h4>`);
       continue;
     }
 
@@ -116,14 +263,6 @@ function parseMarkdownToHtml(md: string): string {
   return out.join('\n');
 }
 
-function formatInline(str: string): string {
-  return str
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" rel="noopener noreferrer">$1</a>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>');
-}
-
 function getCategoryFaqs(key: string, title: string): { q: string; a: string }[] {
   if (key === 'women') {
     return [
@@ -168,8 +307,8 @@ function getCategoryFaqs(key: string, title: string): { q: string; a: string }[]
   if (key === 'all' || key === 'home' || !key) {
     return [
       {
-        q: 'What is DevtoshSuperBazaar?',
-        a: 'DevtoshSuperBazaar is an independent editorial discovery platform that curates high-value fashion, smartphones, mobile accessories, footwear, and lifestyle products from trusted Indian retail marketplaces.'
+        q: 'What is DevTosh Superbazaar?',
+        a: 'DevTosh Superbazaar is an independent editorial discovery platform that curates high-value fashion, smartphones, mobile accessories, footwear, and lifestyle products from trusted Indian retail marketplaces.'
       },
       {
         q: 'How do shopping and affiliate links work?',
@@ -177,7 +316,7 @@ function getCategoryFaqs(key: string, title: string): { q: string; a: string }[]
       },
       {
         q: 'Where does payment and order delivery take place?',
-        a: 'Orders, payments, order tracking, and returns are handled entirely by the destination retailer (e.g., Meesho). DevtoshSuperBazaar does not collect payments or manage shipments directly.'
+        a: 'Orders, payments, order tracking, and returns are handled entirely by the destination retailer (e.g., Meesho). DevTosh Superbazaar does not collect payments or manage shipments directly.'
       },
       {
         q: 'Can product prices or discounts vary?',
@@ -197,19 +336,35 @@ function getCategoryFaqs(key: string, title: string): { q: string; a: string }[]
   ];
 }
 
-function renderFaqsHtml(faqs: { q: string; a: string }[], heading: string = 'Frequently Asked Questions'): string {
+function renderFaqsHtml(
+  faqs: { q: string; a: string }[],
+  heading: string = 'Frequently Asked Questions',
+  intro: string = 'Helpful answers regarding our curation, retailer shopping links, and store operations.',
+  groupId: string = 'main'
+): string {
   if (!faqs || !faqs.length) return '';
+  const cleanGroupId = groupId.replace(/[^a-zA-Z0-9_-]/g, '-');
   return `
-    <section class="w faqs-sec" aria-labelledby="faqs-heading">
-      <h2 id="faqs-heading" class="faqs-title">${esc(heading)}</h2>
-      <p class="faqs-lead">Helpful answers regarding our curation, retailer shopping links, and store operations.</p>
-      <div class="faqs-list">
-        ${faqs.map((f, i) => `
-          <details class="faq-item" ${i === 0 ? 'open' : ''}>
-            <summary class="faq-q"><span>${esc(f.q)}</span></summary>
-            <p class="faq-a">${esc(f.a)}</p>
-          </details>
-        `).join('')}
+    <section class="w faqs-sec" aria-labelledby="faqs-heading-${cleanGroupId}">
+      <h2 id="faqs-heading-${cleanGroupId}" class="faqs-title">${esc(heading)}</h2>
+      <p class="faqs-lead">${esc(intro)}</p>
+      <div class="faqs-list" role="presentation">
+        ${faqs.map((f, i) => {
+          const qId = `faq-q-${cleanGroupId}-${i}`;
+          const aId = `faq-a-${cleanGroupId}-${i}`;
+          return `
+          <details name="faq-${cleanGroupId}" class="faq-item">
+            <summary class="faq-q" id="${qId}" aria-expanded="false" aria-controls="${aId}">
+              <span class="faq-q-text">${esc(f.q)}</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </summary>
+            <div id="${aId}" class="faq-a" role="region" aria-labelledby="${qId}">
+              <p style="margin:0">${esc(f.a)}</p>
+            </div>
+          </details>`;
+        }).join('')}
       </div>
     </section>
   `;
@@ -319,16 +474,16 @@ export async function prerender() {
         {
           '@type': 'Organization',
           '@id': `${BASE_ORIGIN}/#organization`,
-          'name': 'DevtoshSuperBazaar',
+          'name': 'DevTosh Superbazaar',
           'url': `${BASE_ORIGIN}/`,
           'logo': `${BASE_ORIGIN}/favicon-48x48.png`,
-          'sameAs': ['https://www.instagram.com/devsharanyadav4']
+          'sameAs': ['https://www.instagram.com/devtoshsuperbazaar/']
         },
         {
           '@type': 'WebSite',
           '@id': `${BASE_ORIGIN}/#website`,
           'url': `${BASE_ORIGIN}/`,
-          'name': 'DevtoshSuperBazaar',
+          'name': 'DevTosh Superbazaar',
           'description': 'Curated fashion, smartphones, mobile accessories, footwear and lifestyle affiliate discovery.',
           'publisher': {
             '@id': `${BASE_ORIGIN}/#organization`
@@ -376,14 +531,15 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   // 1. Prerender Homepage (dist/index.html)
   // ========================================================================
   console.log('[SSG Prerender] Prerendering Homepage (dist/index.html)...');
-  const homeFaqs = getCategoryFaqs('home', 'DevtoshSuperBazaar');
-  const homeFeatured = DEMO_PRODUCTS.slice(0, 8);
+  const homeFaqs = getCategoryFaqs('home', 'DevTosh Superbazaar');
+  const liveProducts = await fetchLiveProductsFromFirestore();
+  const homeFeatured = liveProducts.length > 0 ? liveProducts : DEMO_PRODUCTS.slice(0, 8);
   const homeMainHtml = `
     <section class="w ih">
       <div class="tt">
-        <h1 class="f" tabindex="-1">DevtoshSuperBazaar — Curated Fashion, Mobiles &amp; Lifestyle Discovery</h1>
+        <h1 class="f" tabindex="-1">DevTosh Superbazaar — Curated Fashion, Mobiles &amp; Lifestyle Discovery</h1>
       </div>
-      <p class="lead">Discover handpicked fashion, smartphones, car mobile holders, footwear, and lifestyle essentials curated by Devtosh SuperBazaar.</p>
+      <p class="lead">Discover handpicked fashion, smartphones, car mobile holders, footwear, and lifestyle essentials curated by DevTosh Superbazaar.</p>
     </section>
 
     <div class="w lay">
@@ -396,23 +552,23 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
         <div class="g">${homeFeatured.map((p, idx) => renderStaticProductCard(p, idx === 0)).join('')}</div>
       </div>
     </div>
-    ${renderFaqsHtml(homeFaqs, 'DevtoshSuperBazaar — Frequently Asked Questions')}
+    ${renderFaqsHtml(homeFaqs, 'DevTosh Superbazaar — Frequently Asked Questions', 'Helpful answers regarding our curation, retailer shopping links, and store operations.', 'home')}
   `;
 
   const homeJsonLd = {
     '@type': 'WebPage',
     '@id': `${BASE_ORIGIN}/#webpage`,
     'url': `${BASE_ORIGIN}/`,
-    'name': 'DevtoshSuperBazaar — Curated Fashion, Mobiles & Lifestyle Discovery',
-    'description': 'Editorial discovery catalog and affiliate shopping platform for women\'s, men\'s, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by Devtosh SuperBazaar.',
+    'name': 'DevTosh Superbazaar — Curated Fashion, Mobiles & Lifestyle Discovery',
+    'description': 'Editorial discovery catalog and affiliate shopping platform for women\'s, men\'s, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by DevTosh Superbazaar.',
     'isPartOf': {
       '@id': `${BASE_ORIGIN}/#website`
     }
   };
 
   const homeHtml = assembleHtml({
-    title: 'DevtoshSuperBazaar — Curated Fashion, Mobiles & Lifestyle Discovery',
-    description: 'Editorial discovery catalog and affiliate shopping platform for women\'s, men\'s, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by Devtosh SuperBazaar.',
+    title: 'DevTosh Superbazaar — Curated Fashion, Mobiles & Lifestyle Discovery',
+    description: 'Editorial discovery catalog and affiliate shopping platform for women\'s, men\'s, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by DevTosh Superbazaar.',
     canonicalUrl: `${BASE_ORIGIN}/`,
     jsonLd: homeJsonLd,
     faqs: homeFaqs,
@@ -483,7 +639,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
           <div class="g">${items.map((p, idx) => renderStaticProductCard(p, idx === 0)).join('')}</div>
         </div>
       </div>
-      ${renderFaqsHtml(catFaqs, `${cat.name} — Questions & Answers`)}
+      ${renderFaqsHtml(catFaqs, `${cat.name} — Questions & Answers`, `Common questions about our ${cat.name.toLowerCase()} curation and shopping advice.`, `cat-${cat.slug}`)}
     `;
 
     const catHtml = assembleHtml({
@@ -507,15 +663,34 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   // ========================================================================
   // 3. Prerender Every Single Product (/product/<slug>/)
   // ========================================================================
-  console.log(`[SSG Prerender] Prerendering ${DEMO_PRODUCTS.length} single product pages...`);
-  for (const p of DEMO_PRODUCTS) {
+  const allProductsToPrerender: Product[] = [];
+  const seenProductSlugs = new Set<string>();
+
+  // Live products from Cloud Firestore take priority
+  for (const lp of liveProducts) {
+    if (lp.slug && !seenProductSlugs.has(lp.slug)) {
+      seenProductSlugs.add(lp.slug);
+      allProductsToPrerender.push(lp);
+    }
+  }
+
+  // Demo products supplement catalogue
+  for (const dp of DEMO_PRODUCTS) {
+    if (dp.slug && !seenProductSlugs.has(dp.slug)) {
+      seenProductSlugs.add(dp.slug);
+      allProductsToPrerender.push(dp);
+    }
+  }
+
+  console.log(`[SSG Prerender] Prerendering ${allProductsToPrerender.length} single product pages (${liveProducts.length} live from Firestore + demo catalogue)...`);
+  for (const p of allProductsToPrerender) {
     const canonicalUrl = `${BASE_ORIGIN}/product/${p.slug}/`;
-    const pageTitle = `${p.name} — Buy Online at Best Price | Devtosh SuperBazaar`;
+    const pageTitle = `${p.name} — Buy Online at Best Price | DevTosh Superbazaar`;
     const pageDesc = `Discover ${p.name} by ${p.brand} at ₹${p.price} (MRP ₹${p.mrp || p.price}). ${p.desc}`;
     const ogImg = p.imgUrl || `${BASE_ORIGIN}/favicon-48x48.png`;
     const d = disc(p);
 
-    const related = DEMO_PRODUCTS
+    const related = allProductsToPrerender
       .filter(x => x.slug !== p.slug)
       .sort((a, b) => (b.cat === p.cat ? 1 : 0) - (a.cat === p.cat ? 1 : 0))
       .slice(0, 4);
@@ -544,7 +719,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
         a: `This item is available through verified merchant partner ${p.ret}. Clicking "Shop at ${p.ret}" opens the official product listing where you can select your size or color variant and complete checkout.`
       },
       {
-        q: 'How does DevtoshSuperBazaar track prices?',
+        q: 'How does DevTosh Superbazaar track prices?',
         a: `Prices displayed are indicative of recent retailer listings. Retailers frequently update discounts and stock levels, so please verify the live price directly on ${p.ret}.`
       },
       {
@@ -616,11 +791,11 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
             <div class="sh-bar" role="region" aria-label="Share this product" style="margin-top:28px">
               <span class="sh-lbl">Share:</span>
-              <a class="sh-btn wa" href="https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out ${p.name} on Devtosh SuperBazaar: ${canonicalUrl}`)}" target="_blank" rel="noopener noreferrer" aria-label="Share on WhatsApp">
+              <a class="sh-btn wa" href="https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out ${p.name} on DevTosh Superbazaar: ${canonicalUrl}`)}" target="_blank" rel="noopener noreferrer" aria-label="Share on WhatsApp">
                 <svg aria-hidden="true"><use href="#wa"/></svg>
                 <span>WhatsApp</span>
               </a>
-              <a class="sh-btn tg" href="https://t.me/share/url?url=${encodeURIComponent(canonicalUrl)}&text=${encodeURIComponent(`Check out ${p.name} on Devtosh SuperBazaar`)}" target="_blank" rel="noopener noreferrer" aria-label="Share on Telegram">
+              <a class="sh-btn tg" href="https://t.me/share/url?url=${encodeURIComponent(canonicalUrl)}&text=${encodeURIComponent(`Check out ${p.name} on DevTosh Superbazaar`)}" target="_blank" rel="noopener noreferrer" aria-label="Share on Telegram">
                 <svg aria-hidden="true"><use href="#tg"/></svg>
                 <span>Telegram</span>
               </a>
@@ -630,12 +805,12 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
               </button>
             </div>
 
-            <p class="dc" style="margin-top:24px"><b>Affiliate disclosure:</b> Devtosh SuperBazaar participates in affiliate partnerships and may earn a commission on qualifying purchases made through partner retailer links at no additional cost to you.</p>
+            <p class="dc" style="margin-top:24px"><b>Affiliate disclosure:</b> DevTosh Superbazaar participates in affiliate partnerships and may earn a commission on qualifying purchases made through partner retailer links at no additional cost to you.</p>
           </div>
         </div>
         <h2 class="f rh">You may also like</h2>
         <div class="g">${related.map(r => renderStaticProductCard(r, false)).join('')}</div>
-        ${renderFaqsHtml(prodFaqs, `About ${p.name} — FAQs`)}
+        ${renderFaqsHtml(prodFaqs, `About ${p.name} — FAQs`, 'Answers about materials, fit, care instructions, and retailer ordering.', `prod-${p.slug}`)}
       </section>
     `;
 
@@ -667,7 +842,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
   for (const article of publishedArticles) {
     const canonicalUrl = article.canonicalUrl || `${BASE_ORIGIN}/blog/${article.slug}/`;
-    const pageTitle = `${article.metaTitle || article.title} — Devtosh SuperBazaar`;
+    const pageTitle = `${article.metaTitle || article.title} — DevTosh Superbazaar`;
     const pageDesc = article.metaDesc || article.excerpt;
     const ogImg = article.ogImage || article.coverImage || `${BASE_ORIGIN}/favicon-48x48.png`;
     const readTime = article.readTimeMinutes || calculateReadTime(article.content);
@@ -786,8 +961,8 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
   // Blog Index (/blog/)
   const blogIndexCanonical = `${BASE_ORIGIN}/blog/`;
-  const blogIndexTitle = 'Editorial Style Blog & Shopping Guides | Devtosh SuperBazaar';
-  const blogIndexDesc = 'Curated fashion guides, saree styling advice, and mobile accessory roundups by the Devtosh SuperBazaar editorial team.';
+  const blogIndexTitle = 'Editorial Style Blog & Shopping Guides | DevTosh Superbazaar';
+  const blogIndexDesc = 'Curated fashion guides, saree styling advice, and mobile accessory roundups by the DevTosh Superbazaar editorial team.';
 
   const blogIndexJsonLd = {
     '@type': 'CollectionPage',
@@ -860,56 +1035,56 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   const infoPages = [
     {
       slug: 'about',
-      title: 'About Devtosh SuperBazaar',
+      title: 'About DevTosh Superbazaar',
       description: 'Learn about Devtosh SuperBazaar, an independent curated online catalog for fashion, electronics, and lifestyle discovery.',
-      heading: 'About Devtosh SuperBazaar',
+      heading: 'About DevTosh Superbazaar',
       body: `
-        <p class="lead">Devtosh SuperBazaar is a curated product discovery destination founded by Devsharan Yadav, focused on showcasing top-tier ethnic wear, smart mobile essentials, and everyday lifestyle values from India's vibrant retail marketplaces.</p>
+        <p class="lead">DevTosh Superbazaar is a curated product discovery destination founded by Devsharan Yadav, focused on showcasing top-tier ethnic wear, smart mobile essentials, and everyday lifestyle values from India's vibrant retail marketplaces.</p>
         <p class="mu" style="margin-top:20px;line-height:1.7">We do not sell counterfeit goods, manufacture apparel, or take customer payments. Instead, our editors browse thousands of listings to surface genuine bargains with dependable merchant reviews, directing you to trusted e-commerce stores.</p>
       `
     },
     {
       slug: 'contact',
-      title: 'Contact Devtosh SuperBazaar',
+      title: 'Contact DevTosh Superbazaar',
       description: 'Get in touch with Devtosh SuperBazaar for catalog suggestions, business collaborations, or general questions.',
-      heading: 'Contact Devtosh SuperBazaar',
+      heading: 'Contact DevTosh Superbazaar',
       body: `
         <p class="lead">We welcome suggestions, feedback, and merchant partnership inquiries.</p>
         <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:24px">
           <h2 style="font-size:18px;margin:0 0 12px;color:var(--dp)">Editorial &amp; Business Office</h2>
-          <p style="line-height:1.7;margin:0 0 16px"><b>Founder &amp; Curator:</b> Devsharan Yadav<br /><b>Direct Instagram:</b> <a href="https://www.instagram.com/devsharanyadav4" target="_blank" rel="noopener noreferrer" style="color:var(--wn);text-decoration:underline">@devsharanyadav4</a><br /><b>Website:</b> <a href="${BASE_ORIGIN}/" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar.github.io</a></p>
+          <p style="line-height:1.7;margin:0 0 16px"><b>Founder &amp; Curator:</b> Devsharan Yadav<br /><b>Direct Instagram:</b> <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);text-decoration:underline">@devtoshsuperbazaar</a><br /><b>Website:</b> <a href="${BASE_ORIGIN}/" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar.github.io</a></p>
           <p class="mu" style="font-size:13px;line-height:1.6;margin:0">For product returns or shipping tracking, please contact the retailer (Meesho, Amazon, or Flipkart) directly using the order confirmation received in your email or SMS.</p>
         </div>
       `
     },
     {
       slug: 'affiliate-disclosure',
-      title: 'Affiliate Disclosure — Devtosh SuperBazaar',
+      title: 'Affiliate Disclosure — DevTosh Superbazaar',
       description: 'Learn how Devtosh SuperBazaar maintains editorial independence and how affiliate partnerships work.',
       heading: 'Affiliate Disclosure',
       body: `
-        <p class="lead">Devtosh SuperBazaar participates in affiliate marketing programs. When you click on product links and make a purchase on partner retailer websites (such as Meesho), we may receive a small commission.</p>
+        <p class="lead">DevTosh Superbazaar participates in affiliate marketing programs. When you click on product links and make a purchase on partner retailer websites (such as Meesho), we may receive a small commission.</p>
         <p class="mu" style="margin-top:16px;line-height:1.7">This commission comes at <b>no additional cost to you</b>. Retailers pay this referral fee directly from their marketing budgets, ensuring you always enjoy standard pricing, sales, and platform vouchers.</p>
         <p class="mu" style="margin-top:20px;line-height:1.7">Our curation team selects garments and accessories based purely on design merits, fabric quality, and aesthetic value. An affiliate partnership never dictates product placement or positive reviews.</p>
       `
     },
     {
       slug: 'privacy',
-      title: 'Privacy Policy — Devtosh SuperBazaar',
-      description: 'Read the privacy policy of Devtosh SuperBazaar. Guest-first privacy architecture without mandatory logins or telemetry.',
+      title: 'Privacy Policy — DevTosh Superbazaar',
+      description: 'Read the privacy policy of DevTosh Superbazaar. Guest-first privacy architecture without mandatory logins or telemetry.',
       heading: 'Privacy Policy',
       body: `
-        <p class="lead">Devtosh SuperBazaar operates on a strict privacy-first principle. Customers are not required to create accounts, submit email addresses, or log in to browse products or save favourites.</p>
+        <p class="lead">DevTosh Superbazaar operates on a strict privacy-first principle. Customers are not required to create accounts, submit email addresses, or log in to browse products or save favourites.</p>
         <p class="mu" style="margin-top:16px;line-height:1.7">Your wishlist is saved locally in your own browser using standard HTML5 localStorage and is never transmitted to third parties.</p>
       `
     },
     {
       slug: 'terms',
-      title: 'Terms of Use — Devtosh SuperBazaar',
-      description: 'Terms of service and catalog accuracy guidelines for Devtosh SuperBazaar.',
+      title: 'Terms of Use — DevTosh Superbazaar',
+      description: 'Terms of service and catalog accuracy guidelines for DevTosh Superbazaar.',
       heading: 'Terms of Use',
       body: `
-        <p class="lead">Welcome to Devtosh SuperBazaar. Product details, prices, and availability are provided for discovery purposes and are subject to verification on official partner retailer websites.</p>
+        <p class="lead">Welcome to DevTosh Superbazaar. Product details, prices, and availability are provided for discovery purposes and are subject to verification on official partner retailer websites.</p>
       `
     }
   ];
@@ -942,7 +1117,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
     `;
 
     const infoHtml = assembleHtml({
-      title: `${info.title} | Devtosh SuperBazaar`,
+      title: `${info.title} | DevTosh Superbazaar`,
       description: info.description,
       canonicalUrl,
       jsonLd,
@@ -965,7 +1140,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   const wishlistCanonical = `${BASE_ORIGIN}/wishlist/`;
   const wishlistFaqs = [
     {
-      q: 'How does the DevtoshSuperBazaar Wishlist work?',
+      q: 'How does the DevTosh Superbazaar Wishlist work?',
       a: 'Items you save by clicking the heart icon are stored privately in your browser using local storage. You do not need to create an account or provide personal data.'
     },
     {
@@ -987,13 +1162,13 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
         <p class="lead">Your wishlist is currently empty or loading from local storage. Click the heart icon on any product to save it here for later reference.</p>
         <p style="margin-top:20px"><a class="vp" href="/">Explore All Collections →</a></p>
       </div>
-      ${renderFaqsHtml(wishlistFaqs, 'Wishlist Questions & Privacy')}
+      ${renderFaqsHtml(wishlistFaqs, 'Wishlist Questions & Privacy', 'How our private, guest-first wishlist works on your browser.', 'wishlist')}
     </section>
   `;
 
   // Wishlist explicitly has noindex: true and NO structured data
   const wishlistHtml = assembleHtml({
-    title: 'My Saved Wishlist | Devtosh SuperBazaar',
+    title: 'My Saved Wishlist | DevTosh Superbazaar',
     description: 'View and manage your saved fashion, footwear, mobile accessories, and lifestyle items.',
     canonicalUrl: wishlistCanonical,
     noindex: true,
@@ -1026,8 +1201,6 @@ ${sitemapUrls.map(u => `  <url>
 Allow: /
 Disallow: /admin/
 Disallow: /#/admin/
-Disallow: /wishlist/
-Disallow: /#/wishlist
 
 Sitemap: ${BASE_ORIGIN}/sitemap.xml
 `;
@@ -1036,20 +1209,52 @@ Sitemap: ${BASE_ORIGIN}/sitemap.xml
   console.log(`[SSG Prerender] Wrote ${path.relative(ROOT_DIR, robotsPath)}`);
 
   // ========================================================================
-  // 9. Generate 404.html (Clean error response without structured data)
+  // 9. Generate 404.html (Clean error response without structured data; route-aware SPA loader)
   // ========================================================================
   const notFoundMainHtml = `
-    <section class="w pgs" style="text-align:center;padding:60px 20px">
-      <h1 class="f" style="font-size:36px;margin-bottom:12px">Page Not Found (404)</h1>
-      <p class="lead" style="margin:0 auto 24px;max-width:520px">The page or product you were looking for could not be found. It may have moved or been retired.</p>
-      <p><a class="lm" href="/" style="text-decoration:none;display:inline-block;padding:12px 28px">Return to Homepage →</a></p>
-    </section>
+    <div id="ghp-404-msg">
+      <section class="w pgs" style="text-align:center;padding:60px 20px">
+        <h1 class="f" style="font-size:36px;margin-bottom:12px">Page Not Found (404)</h1>
+        <p class="lead" style="margin:0 auto 24px;max-width:520px">The page or product you were looking for could not be found. It may have moved or been retired.</p>
+        <p><a class="lm" href="/" style="text-decoration:none;display:inline-block;padding:12px 28px">Return to Homepage →</a></p>
+      </section>
+    </div>
+    <div id="ghp-route-loading" style="display:none">
+      <section class="w pgs wide">
+        <nav class="bc" aria-label="Breadcrumb">
+          <a href="/">Home</a> / <span>Loading Product…</span>
+        </nav>
+        <div class="dt" style="margin-top:24px">
+          <div class="ph big" style="background:var(--bl);animation:1.5s ease-in-out infinite shimmer;min-height:460px;border-radius:4px"></div>
+          <div>
+            <div style="height:14px;width:120px;background:var(--bd);border-radius:3px;margin-bottom:14px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:32px;width:85%;background:var(--bd);border-radius:4px;margin-bottom:18px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:24px;width:40%;background:var(--bd);border-radius:3px;margin-bottom:24px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:14px;width:95%;background:var(--bd);border-radius:3px;margin-bottom:10px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:14px;width:90%;background:var(--bd);border-radius:3px;margin-bottom:10px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:14px;width:75%;background:var(--bd);border-radius:3px;margin-bottom:28px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:48px;width:220px;background:var(--sat);border-radius:3px;opacity:0.75"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      (function(){
+        var p = window.location.pathname || '';
+        if (p && (p.indexOf('/product/') !== -1 || p.indexOf('/category/') !== -1 || p.indexOf('/blog/') !== -1 || p.indexOf('/go/') !== -1)) {
+          var m = document.getElementById('ghp-404-msg');
+          var l = document.getElementById('ghp-route-loading');
+          if (m) m.style.display = 'none';
+          if (l) l.style.display = 'block';
+        }
+      })();
+    </script>
   `;
 
   // 404.html explicitly has noindex: true and NO structured data
   const notFoundHtml = assembleHtml({
-    title: 'Page Not Found | Devtosh SuperBazaar',
-    description: 'The requested page could not be located on Devtosh SuperBazaar.',
+    title: 'Page Not Found | DevTosh Superbazaar',
+    description: 'The requested page could not be located on DevTosh Superbazaar.',
     canonicalUrl: `${BASE_ORIGIN}/404.html`,
     noindex: true,
     mainHtml: notFoundMainHtml
