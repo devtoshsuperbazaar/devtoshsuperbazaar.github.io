@@ -38,7 +38,9 @@ import {
   renderArticleForm,
   validateArticle,
   generateArticleSlug,
-  parseMarkdownToHtml
+  parseMarkdownToHtml,
+  parseMarkdownWithFrontmatter,
+  AI_BLOG_PROMPT_TEMPLATE
 } from './blog.ts';
 
 // --------------------------------------------------------------------------
@@ -93,8 +95,8 @@ export interface SiteSettings {
 
 export const DEFAULT_SETTINGS: SiteSettings = {
   announcement: 'Devtosh SuperBazaar — Curated fashion, mobiles, accessories, footwear and lifestyle catalogue.',
-  disclosure: 'Devtosh SuperBazaar participates in affiliate partnerships and may earn a commission when you purchase through links to retailer websites at no extra cost to you.',
-  contactHandle: '@devsharanyadav4'
+  disclosure: 'DevTosh Superbazaar participates in affiliate partnerships and may earn a commission when you purchase through links to retailer websites at no extra cost to you.',
+  contactHandle: '@devtoshsuperbazaar'
 };
 
 const CX: Record<string, string> = {
@@ -122,7 +124,8 @@ export class Store {
   adminApiKeyError: boolean = false;
   adminSuccessMessage: string = '';
 
-  products: Product[] = [...DEMO_PRODUCTS];
+  products: Product[] = [];
+  publicProductsLoaded: boolean = false;
   adminProducts: Product[] = [];
   settings: SiteSettings = DEFAULT_SETTINGS;
   wishlistSlugs: string[] = [];
@@ -167,6 +170,20 @@ export class Store {
 
   constructor() {
     this.loadWishlist();
+    this.loadCachedProducts();
+  }
+
+  loadCachedProducts() {
+    try {
+      const stored = localStorage.getItem('dsb_live_products');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this.products = parsed;
+          this.publicProductsLoaded = true;
+        }
+      }
+    } catch {}
   }
 
   loadWishlist() {
@@ -233,6 +250,10 @@ export function generateSlug(text: string): string {
     .replace(/-+/g, '-');
 }
 
+export function checkDuplicateProductSlug(candidateSlug: string, products: Product[], currentId?: string): boolean {
+  return products.some(p => p.slug === candidateSlug && (!currentId || p.id !== currentId));
+}
+
 export function announce(msg: string) {
   const el = document.getElementById('live-announcer');
   if (el) {
@@ -255,7 +276,7 @@ export async function loadPublicProducts() {
         id: docSnap.id,
         slug: d.slug || docSnap.id,
         name: d.name || 'Untitled Product',
-        brand: d.brand || 'Devtosh SuperBazaar Curated',
+        brand: d.brand || 'DevTosh Superbazaar Curated',
         cat: d.cat || 'Essentials',
         subcat: d.subcat || '',
         price: Number(d.price || 0),
@@ -278,13 +299,21 @@ export async function loadPublicProducts() {
 
     if (liveItems.length > 0) {
       store.products = liveItems;
+      store.publicProductsLoaded = true;
+      try {
+        localStorage.setItem('dsb_live_products', JSON.stringify(liveItems));
+      } catch {}
     } else {
-      // Seamless fallback to curated demo collection so catalog is never empty
+      // Seamless fallback to curated demo collection if database has zero published items
       store.products = DEMO_PRODUCTS;
+      store.publicProductsLoaded = true;
     }
   } catch (error) {
-    console.warn('Cloud Firestore query failed or empty, using demo catalog fallback:', error);
-    store.products = DEMO_PRODUCTS;
+    console.warn('Cloud Firestore query failed or offline, checking fallback:', error);
+    if (store.products.length === 0) {
+      store.products = DEMO_PRODUCTS;
+    }
+    store.publicProductsLoaded = true;
   }
 }
 
@@ -340,7 +369,7 @@ export async function loadPublicArticles() {
         metaDesc: d.metaDesc || '',
         excerpt: d.excerpt || '',
         content: d.content || '',
-        authorName: d.authorName || 'Devtosh SuperBazaar Editorial Team',
+        authorName: d.authorName || 'DevTosh Superbazaar Editorial Team',
         authorUrl: d.authorUrl,
         coverImage: d.coverImage || '',
         coverImageAlt: d.coverImageAlt || d.coverAlt || d.title || '',
@@ -385,7 +414,7 @@ export async function loadAdminArticles() {
         metaDesc: d.metaDesc || '',
         excerpt: d.excerpt || '',
         content: d.content || '',
-        authorName: d.authorName || 'Devtosh SuperBazaar Editorial Team',
+        authorName: d.authorName || 'DevTosh Superbazaar Editorial Team',
         authorUrl: d.authorUrl,
         coverImage: d.coverImage || '',
         coverImageAlt: d.coverImageAlt || d.coverAlt || d.title || '',
@@ -623,8 +652,8 @@ function getCategoryFaqs(key: string, title: string): { q: string; a: string }[]
   if (key === 'all' || key === 'home' || !key) {
     return [
       {
-        q: 'What is DevtoshSuperBazaar?',
-        a: 'DevtoshSuperBazaar is an independent editorial discovery platform that curates high-value fashion, smartphones, mobile accessories, footwear, and lifestyle products from trusted Indian retail marketplaces.'
+        q: 'What is DevTosh Superbazaar?',
+        a: 'DevTosh Superbazaar is an independent editorial discovery platform that curates high-value fashion, smartphones, mobile accessories, footwear, and lifestyle products from trusted Indian retail marketplaces.'
       },
       {
         q: 'How do shopping and affiliate links work?',
@@ -632,7 +661,7 @@ function getCategoryFaqs(key: string, title: string): { q: string; a: string }[]
       },
       {
         q: 'Where does payment and order delivery take place?',
-        a: 'Orders, payments, order tracking, and returns are handled entirely by the destination retailer (e.g., Meesho). DevtoshSuperBazaar does not collect payments or manage shipments directly.'
+        a: 'Orders, payments, order tracking, and returns are handled entirely by the destination retailer (e.g., Meesho). DevTosh Superbazaar does not collect payments or manage shipments directly.'
       },
       {
         q: 'Can product prices or discounts vary?',
@@ -652,25 +681,92 @@ function getCategoryFaqs(key: string, title: string): { q: string; a: string }[]
   ];
 }
 
-function renderFaqsHtml(faqs: { q: string; a: string }[], heading: string = 'Frequently Asked Questions'): string {
+function renderFaqsHtml(
+  faqs: { q: string; a: string }[],
+  heading: string = 'Frequently Asked Questions',
+  intro: string = 'Helpful answers regarding our curation, retailer shopping links, and store operations.',
+  groupId: string = 'main'
+): string {
   if (!faqs || !faqs.length) return '';
+  const cleanGroupId = groupId.replace(/[^a-zA-Z0-9_-]/g, '-');
   return `
-    <section class="w faqs-sec" aria-labelledby="faqs-heading">
-      <h2 id="faqs-heading" class="faqs-title">${esc(heading)}</h2>
-      <p class="faqs-lead">Helpful answers regarding our curation, retailer shopping links, and store operations.</p>
-      <div class="faqs-list">
-        ${faqs.map((f, i) => `
-          <details class="faq-item" ${i === 0 ? 'open' : ''}>
-            <summary class="faq-q"><span>${esc(f.q)}</span></summary>
-            <p class="faq-a">${esc(f.a)}</p>
-          </details>
-        `).join('')}
+    <section class="w faqs-sec" aria-labelledby="faqs-heading-${cleanGroupId}">
+      <h2 id="faqs-heading-${cleanGroupId}" class="faqs-title">${esc(heading)}</h2>
+      <p class="faqs-lead">${esc(intro)}</p>
+      <div class="faqs-list" role="presentation">
+        ${faqs.map((f, i) => {
+          const qId = `faq-q-${cleanGroupId}-${i}`;
+          const aId = `faq-a-${cleanGroupId}-${i}`;
+          return `
+          <details name="faq-${cleanGroupId}" class="faq-item">
+            <summary class="faq-q" id="${qId}" aria-expanded="false" aria-controls="${aId}">
+              <span class="faq-q-text">${esc(f.q)}</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </summary>
+            <div id="${aId}" class="faq-a" role="region" aria-labelledby="${qId}">
+              <p style="margin:0">${esc(f.a)}</p>
+            </div>
+          </details>`;
+        }).join('')}
       </div>
     </section>
   `;
 }
 
 function renderPublicCatalog(title: string, desc: string, base: Product[], key: string) {
+  const faqs = getCategoryFaqs(key, title);
+
+  // If public products are still loading from Firestore and cache is empty, render loading skeleton
+  if (!store.publicProductsLoaded && base.length === 0) {
+    return {
+      title,
+      navKey: key,
+      metaDesc: desc,
+      canonical: `https://devtoshsuperbazaar.github.io/${key === 'all' || key === 'home' || !key ? '' : 'category/' + key + '/'}`,
+      html: `
+        <section class="w ih">
+          <div class="tt">
+            <h1 class="f" tabindex="-1">${esc(title)}</h1>
+          </div>
+          <p class="lead">${esc(desc)}</p>
+        </section>
+
+        <div class="w lay">
+          <aside class="sb" id="sidebar-filters" aria-label="Product catalogue filters">
+            <div class="sb-header">
+              <span class="sb-title">Filters</span>
+            </div>
+            <p class="mu" style="font-size:12px;padding:12px 0">Loading curated collections…</p>
+          </aside>
+
+          <div class="mn">
+            <div class="tb">
+              <div class="tl">
+                <strong>Loading verified products…</strong>
+              </div>
+            </div>
+
+            <div class="g" aria-busy="true" aria-label="Loading catalog products">
+              ${[1, 2, 3, 4].map(() => `
+                <article class="pc pc-skel" aria-hidden="true">
+                  <div class="ph" style="background:var(--bl);aspect-ratio:4/5"></div>
+                  <div class="pi">
+                    <div style="height:12px;width:35%;background:var(--bd);margin-bottom:8px;border-radius:2px"></div>
+                    <div style="height:16px;width:80%;background:var(--bd);margin-bottom:8px;border-radius:2px"></div>
+                    <div style="height:18px;width:40%;background:var(--bd);margin-bottom:8px;border-radius:2px"></div>
+                  </div>
+                </article>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+        ${renderFaqsHtml(faqs, `${title} — Questions & Answers`, 'Helpful answers regarding our curation and sizing options.', 'catalog')}
+      `
+    };
+  }
+
   const f = store.filters;
   const ok = (p: Product) => {
     const matchBrand = !f.brand.length || f.brand.includes(p.brand);
@@ -760,8 +856,6 @@ function renderPublicCatalog(title: string, desc: string, base: Product[], key: 
     ? [['Home', '/']]
     : [['Home', '/'], [title]];
 
-  const faqs = getCategoryFaqs(key, title);
-
   return {
     title,
     navKey: key,
@@ -826,7 +920,7 @@ function renderPublicCatalog(title: string, desc: string, base: Product[], key: 
           `}
         </div>
       </div>
-      ${renderFaqsHtml(faqs, `${title} — Questions & Answers`)}
+      ${renderFaqsHtml(faqs, `${title} — Questions & Answers`, 'Helpful answers regarding our curation and sizing options.', 'catalog')}
     `
   };
 }
@@ -880,11 +974,11 @@ function renderProductDetail(p: Product) {
             <!-- Social Share Bar (WhatsApp, Telegram & Copy Link) -->
             <div class="sh-bar" role="region" aria-label="Share this product">
               <span class="sh-lbl">Share:</span>
-              <a class="sh-btn wa" href="https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out ${p.name} on Devtosh SuperBazaar: ${prodUrl}`)}" target="_blank" rel="noopener noreferrer" aria-label="Share on WhatsApp">
+              <a class="sh-btn wa" href="https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out ${p.name} on DevTosh Superbazaar: ${prodUrl}`)}" target="_blank" rel="noopener noreferrer" aria-label="Share on WhatsApp">
                 <svg aria-hidden="true"><use href="#wa"/></svg>
                 <span>WhatsApp</span>
               </a>
-              <a class="sh-btn tg" href="https://t.me/share/url?url=${encodeURIComponent(prodUrl)}&text=${encodeURIComponent(`Check out ${p.name} on Devtosh SuperBazaar`)}" target="_blank" rel="noopener noreferrer" aria-label="Share on Telegram">
+              <a class="sh-btn tg" href="https://t.me/share/url?url=${encodeURIComponent(prodUrl)}&text=${encodeURIComponent(`Check out ${p.name} on DevTosh Superbazaar`)}" target="_blank" rel="noopener noreferrer" aria-label="Share on Telegram">
                 <svg aria-hidden="true"><use href="#tg"/></svg>
                 <span>Telegram</span>
               </a>
@@ -894,7 +988,7 @@ function renderProductDetail(p: Product) {
               </button>
             </div>
 
-            <p class="dc" style="margin-top:24px"><b>Affiliate disclosure:</b> Devtosh SuperBazaar participates in affiliate partnerships and may earn a commission on qualifying purchases made through partner retailer links at no additional cost to you.</p>
+            <p class="dc" style="margin-top:24px"><b>Affiliate disclosure:</b> DevTosh Superbazaar participates in affiliate partnerships and may earn a commission on qualifying purchases made through partner retailer links at no additional cost to you.</p>
             <p class="dc">Product availability, pricing, and merchant details are subject to verification on the retailer’s website.</p>
           </div>
         </div>
@@ -906,7 +1000,7 @@ function renderProductDetail(p: Product) {
             a: `This item is available through verified merchant partner ${p.ret}. Clicking "Shop at ${p.ret}" opens the official product listing where you can select your size or color variant and complete checkout.`
           },
           {
-            q: 'How does DevtoshSuperBazaar track prices?',
+            q: 'How does DevTosh Superbazaar track prices?',
             a: `Prices displayed are indicative of recent retailer listings. Retailers frequently update discounts and stock levels, so please verify the live price directly on ${p.ret}.`
           },
           {
@@ -914,6 +1008,56 @@ function renderProductDetail(p: Product) {
             a: `Because orders are placed directly on ${p.ret}, shipping speeds, delivery fees, and return or exchange windows follow ${p.ret}'s official customer care policies.`
           }
         ], `About This Product — FAQs`)}
+      </section>
+    `
+  };
+}
+
+export function renderProductLoading(slug: string) {
+  return {
+    title: 'Loading Product Details…',
+    navKey: '',
+    html: `
+      <section class="w pgs wide">
+        <nav class="bc" aria-label="Breadcrumb">
+          <a href="/">Home</a> / <span>Loading Product…</span>
+        </nav>
+        <div class="dt" style="margin-top:24px">
+          <div class="ph big" style="background:var(--bl);animation:1.5s ease-in-out infinite shimmer;min-height:460px;border-radius:4px"></div>
+          <div>
+            <div style="height:14px;width:120px;background:var(--bd);border-radius:3px;margin-bottom:14px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:32px;width:85%;background:var(--bd);border-radius:4px;margin-bottom:18px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:24px;width:40%;background:var(--bd);border-radius:3px;margin-bottom:24px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:14px;width:95%;background:var(--bd);border-radius:3px;margin-bottom:10px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:14px;width:90%;background:var(--bd);border-radius:3px;margin-bottom:10px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:14px;width:75%;background:var(--bd);border-radius:3px;margin-bottom:28px;animation:1.5s ease-in-out infinite shimmer"></div>
+            <div style="height:48px;width:220px;background:var(--sat);border-radius:3px;opacity:0.75"></div>
+          </div>
+        </div>
+      </section>
+    `
+  };
+}
+
+export function renderProductNotFound(slug: string) {
+  return {
+    title: 'Product Not Found',
+    navKey: '',
+    noindex: true,
+    html: `
+      <section class="w pgs" style="text-align:center;padding:60px 20px">
+        <nav class="bc" aria-label="Breadcrumb" style="margin-bottom:24px">
+          <a href="/">Home</a> / <span aria-current="page">Product Not Found</span>
+        </nav>
+        <h1 class="f" style="font-size:36px;margin-bottom:14px">Product Not Available</h1>
+        <p class="lead" style="margin:0 auto 24px;max-width:540px">
+          The requested product <code>${esc(slug)}</code> could not be found in our curated catalogue. It may have been updated, moved, or retired by the merchant.
+        </p>
+        <p style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <a class="lm" href="/" style="text-decoration:none;padding:12px 28px">Browse Full Catalogue →</a>
+          <a class="vp" href="/category/men/">Men’s Fashion</a>
+          <a class="vp" href="/category/women/">Women’s Fashion</a>
+        </p>
       </section>
     `
   };
@@ -943,7 +1087,7 @@ function renderWishlistView() {
         `}
         ${renderFaqsHtml([
           {
-            q: 'How does the DevtoshSuperBazaar Wishlist work?',
+            q: 'How does the DevTosh Superbazaar Wishlist work?',
             a: 'Items you save by clicking the heart icon are stored privately in your browser using local storage. You do not need to create an account or provide personal data.'
           },
           {
@@ -1004,7 +1148,7 @@ function renderAdminHeader(title: string): string {
       <div class="adm-hdr-title">
         <img class="lg-mark" src="/favicon-48x48.png" srcset="/favicon-48x48.png 1x, /apple-touch-icon.png 2x" style="width:28px;height:28px;border-radius:6px;object-fit:cover;flex:none;display:block" width="28" height="28" alt="" aria-hidden="true" />
         <div>
-          <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--wn);font-weight:600">Devtosh SuperBazaar Management</div>
+          <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--wn);font-weight:600">DevTosh Superbazaar Management</div>
           <h1 style="font-size:18px;margin:0;font-weight:600;font-family:'Bodoni Moda',serif">${esc(title)}</h1>
         </div>
       </div>
@@ -1025,7 +1169,7 @@ function renderAdminLogin() {
       <section class="w" style="max-width:480px;margin:50px auto;padding:0 20px">
         <div style="text-align:center;margin-bottom:28px">
           <span class="lo" style="margin:0 auto 12px;width:48px;height:48px;font-size:16px">DSB</span>
-          <h1 class="f" style="font-size:26px;margin:0 0 6px">Devtosh SuperBazaar Admin</h1>
+          <h1 class="f" style="font-size:26px;margin:0 0 6px">DevTosh Superbazaar Admin</h1>
           <p class="mu" style="font-size:14px">Secure, mobile-first catalogue management.</p>
         </div>
 
@@ -1507,7 +1651,7 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
               <div class="adm-field">
                 <label for="p-brand">Brand *</label>
-                <input type="text" id="p-brand" required value="${esc(p?.brand || 'Devtosh SuperBazaar Curated')}" class="adm-input" placeholder="e.g. Meesho Supplier or Devtosh SuperBazaar" />
+                <input type="text" id="p-brand" required value="${esc(p?.brand || 'DevTosh Superbazaar Curated')}" class="adm-input" placeholder="e.g. Meesho Supplier or Devtosh SuperBazaar" />
               </div>
 
               <div class="adm-field">
@@ -1768,30 +1912,30 @@ function renderAdminSettings() {
 // --------------------------------------------------------------------------
 function renderAboutView() {
   return {
-    title: 'About Devtosh SuperBazaar',
+    title: 'About DevTosh Superbazaar',
     navKey: 'about',
     html: `
       <section class="w pgs">
         ${renderBreadcrumb([['Home', '/'], ['About Us']])}
         <div class="tt">
-          <h1 class="f" tabindex="-1">About Devtosh SuperBazaar</h1>
+          <h1 class="f" tabindex="-1">About DevTosh Superbazaar</h1>
         </div>
         <p class="lead" style="margin-top:16px">
-          Devtosh SuperBazaar is an independent fashion discovery and editorial curation destination. We simplify menswear shopping by handpicking timeless wardrobe staples, relaxed cuts, versatile outerwear, and refined footwear from respected global and homegrown labels.
+          DevTosh Superbazaar is an independent fashion discovery and editorial curation destination. We simplify menswear shopping by handpicking timeless wardrobe staples, relaxed cuts, versatile outerwear, and refined footwear from respected global and homegrown labels.
         </p>
 
         <div style="margin-top:36px;display:flex;flex-direction:column;gap:24px">
           <div class="adm-card">
             <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Our Editorial Philosophy</h2>
             <p class="mu" style="line-height:1.6;margin:0">
-              Modern fashion shouldn’t be a maze of endless discount bins and fast-fashion clutter. At Devtosh SuperBazaar, our team scours merchant inventories to assemble a tightly edited catalogue centered around fit, fabric durability, color versatility, and fair pricing.
+              Modern fashion shouldn’t be a maze of endless discount bins and fast-fashion clutter. At DevTosh Superbazaar, our team scours merchant inventories to assemble a tightly edited catalogue centered around fit, fabric durability, color versatility, and fair pricing.
             </p>
           </div>
 
           <div class="adm-card">
             <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">How Discovery & Affiliate Shopping Works</h2>
             <p class="mu" style="line-height:1.6;margin:0">
-              We do not stock physical inventory in our own warehouses. Instead, Devtosh SuperBazaar connects you directly to verified brand partners and retailers. When you discover an item you love, clicking “Shop at Retailer” brings you directly to the merchant’s storefront to complete your purchase.
+              We do not stock physical inventory in our own warehouses. Instead, DevTosh Superbazaar connects you directly to verified brand partners and retailers. When you discover an item you love, clicking “Shop at Retailer” brings you directly to the merchant’s storefront to complete your purchase.
             </p>
           </div>
 
@@ -1813,7 +1957,7 @@ function renderAboutView() {
 
 function renderContactView() {
   return {
-    title: 'Contact Devtosh SuperBazaar',
+    title: 'Contact DevTosh Superbazaar',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -1850,7 +1994,7 @@ function renderContactView() {
         <div class="adm-card" style="margin-top:24px">
           <h2 class="f" style="font-size:18px;margin:0 0 10px;color:var(--dp)">Social & Updates</h2>
           <p class="mu" style="font-size:13.5px;line-height:1.5;margin:0">
-            Follow our daily drops, style edits, and seasonal lookbooks at <b>${esc(store.settings.contactHandle || '@devtoshsuperbazaar')}</b>.
+            Follow our daily drops, style edits, and seasonal lookbooks at <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);font-weight:600;text-decoration:underline">${esc(store.settings.contactHandle || '@devtoshsuperbazaar')}</a>.
           </p>
         </div>
 
@@ -1862,9 +2006,63 @@ function renderContactView() {
   };
 }
 
+
+function renderFaqView() {
+  const allFaqs = [
+    {
+      q: 'What is DevTosh Superbazaar?',
+      a: 'DevTosh Superbazaar is an independent editorial discovery platform that curates high-value fashion, smartphones, mobile accessories, footwear, and lifestyle products from trusted Indian retail marketplaces.'
+    },
+    {
+      q: 'How does shopping through DevTosh Superbazaar work?',
+      a: 'We review and curate products from merchant inventories across trusted platforms like Meesho, Amazon, and Flipkart. When you find an item you like and click "Shop at Retailer", you are redirected to the official seller store to complete your purchase safely.'
+    },
+    {
+      q: 'Are payments made directly to DevTosh Superbazaar?',
+      a: 'No. Orders, transactions, shipping, tracking, and returns are handled entirely by the destination retailer (e.g., Meesho). DevTosh Superbazaar never collects payments or accesses your financial information directly.'
+    },
+    {
+      q: 'How does DevTosh Superbazaar track product prices and discounts?',
+      a: 'Our editorial system logs verified retail pricing, maximum retail prices (MRP), and active seasonal discounts directly from partner seller feeds so you always see genuine savings and current prices.'
+    },
+    {
+      q: 'How does the DevTosh Superbazaar Wishlist work?',
+      a: 'Items you save by clicking the heart icon are stored privately in your browser using local storage. You do not need to create an account, log in, or provide personal data.'
+    },
+    {
+      q: 'How do affiliate links and commissions work?',
+      a: 'DevTosh Superbazaar participates in affiliate partnerships and may receive a modest commission on qualifying purchases made through partner retailer links. This never increases your price or affects product rankings.'
+    },
+    {
+      q: 'How can I get in touch with DevTosh Superbazaar?',
+      a: 'You can reach us at devtoshsuperbazaar@gmail.com or connect via our official Instagram @devtoshsuperbazaar.'
+    }
+  ];
+
+  return {
+    title: 'Frequently Asked Questions',
+    navKey: '',
+    html: `
+      <section class="w ih" style="max-width:880px;margin:0 auto;padding-top:40px;padding-bottom:48px">
+        <nav class="bc" aria-label="Breadcrumb">
+          <a href="/">Home</a> / <span aria-current="page">Frequently Asked Questions</span>
+        </nav>
+        <div class="tt" style="margin-top:16px;margin-bottom:28px">
+          <h1 class="f" tabindex="-1">Frequently Asked Questions</h1>
+          <p class="lead">Find answers to common questions about product curation, shopping safely through our partner links, and store policies at DevTosh Superbazaar.</p>
+        </div>
+        ${renderFaqsHtml(allFaqs, 'All General & Shopping Questions', 'Click or tap any question below to view the answer. Only one answer expands at a time.', 'faq-page')}
+        <p style="margin-top:36px">
+          <a class="vp" href="/">← Return to Collections</a>
+        </p>
+      </section>
+    `
+  };
+}
+
 function renderAffiliateDisclosureView() {
   return {
-    title: 'Affiliate Disclosure — Devtosh SuperBazaar',
+    title: 'Affiliate Disclosure — DevTosh Superbazaar',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -1875,13 +2073,13 @@ function renderAffiliateDisclosureView() {
         <div style="margin-top:24px;line-height:1.65;color:var(--tx)">
           <div class="adm-card" style="border-left:3px solid var(--wn)">
             <p style="margin:0;font-size:14.5px">
-              <b>Transparency Statement:</b> Devtosh SuperBazaar is an independent fashion curation platform. In accordance with FTC guidelines and international advertising disclosure standards, we believe in complete transparency regarding commercial relationships.
+              <b>Transparency Statement:</b> DevTosh Superbazaar is an independent fashion curation platform. In accordance with FTC guidelines and international advertising disclosure standards, we believe in complete transparency regarding commercial relationships.
             </p>
           </div>
 
           <h2 class="f" style="font-size:20px;margin:28px 0 12px;color:var(--dp)">How Affiliate Relationships Work</h2>
           <p class="mu">
-            Devtosh SuperBazaar may earn an affiliate commission when visitors click on partner retailer links and make qualifying purchases on third-party merchant websites. This commission comes at no additional cost to you—the retail price you pay remains exactly the same as visiting the retailer directly.
+            DevTosh Superbazaar may earn an affiliate commission when visitors click on partner retailer links and make qualifying purchases on third-party merchant websites. This commission comes at no additional cost to you—the retail price you pay remains exactly the same as visiting the retailer directly.
           </p>
 
           <h2 class="f" style="font-size:20px;margin:28px 0 12px;color:var(--dp)">Editorial Independence</h2>
@@ -1905,7 +2103,7 @@ function renderAffiliateDisclosureView() {
 
 function renderPrivacyView() {
   return {
-    title: 'Privacy Policy — Devtosh SuperBazaar',
+    title: 'Privacy Policy — DevTosh Superbazaar',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -1916,7 +2114,7 @@ function renderPrivacyView() {
         <div style="margin-top:24px;line-height:1.65;color:var(--tx)">
           <h2 class="f" style="font-size:20px;margin:20px 0 10px;color:var(--dp)">Guest-First Architecture</h2>
           <p class="mu">
-            Devtosh SuperBazaar operates on a strict privacy-first principle. Customers are not required to create accounts, submit email addresses, or log in to browse products or save favourites.
+            DevTosh Superbazaar operates on a strict privacy-first principle. Customers are not required to create accounts, submit email addresses, or log in to browse products or save favourites.
           </p>
 
           <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">Local Storage for Guest Wishlist</h2>
@@ -1940,7 +2138,7 @@ function renderPrivacyView() {
 
 function renderTermsView() {
   return {
-    title: 'Terms of Use — Devtosh SuperBazaar',
+    title: 'Terms of Use — DevTosh Superbazaar',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -1950,17 +2148,17 @@ function renderTermsView() {
         </div>
         <div style="margin-top:24px;line-height:1.65;color:var(--tx)">
           <p class="mu">
-            Welcome to Devtosh SuperBazaar. By accessing or using this website, you agree to comply with and be bound by the following terms and conditions.
+            Welcome to DevTosh Superbazaar. By accessing or using this website, you agree to comply with and be bound by the following terms and conditions.
           </p>
 
           <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">Catalogue & Pricing Accuracy</h2>
           <p class="mu">
-            Product details, prices, availability, and discounts displayed on Devtosh SuperBazaar are provided for informational and discovery purposes. Prices are subject to change by third-party retailers without prior notice. Always verify final pricing on the retailer’s official website before completing a transaction.
+            Product details, prices, availability, and discounts displayed on DevTosh Superbazaar are provided for informational and discovery purposes. Prices are subject to change by third-party retailers without prior notice. Always verify final pricing on the retailer’s official website before completing a transaction.
           </p>
 
           <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">Third-Party Retailers & Intellectual Property</h2>
           <p class="mu">
-            All brand names, trademarks, and retailer logos referenced on this website are the property of their respective owners. Devtosh SuperBazaar does not claim ownership of external brand assets.
+            All brand names, trademarks, and retailer logos referenced on this website are the property of their respective owners. DevTosh Superbazaar does not claim ownership of external brand assets.
           </p>
 
           <p style="margin-top:32px">
@@ -1984,6 +2182,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
   if (root === 'affiliate-disclosure') return renderAffiliateDisclosureView();
   if (root === 'privacy') return renderPrivacyView();
   if (root === 'terms') return renderTermsView();
+  if (root === 'faq' || root === 'faqs') return renderFaqView();
 
   // Admin routes
   if (root === 'admin') {
@@ -2111,7 +2310,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
                 metaDesc: d.metaDesc || '',
                 excerpt: d.excerpt || '',
                 content: d.content || '',
-                authorName: d.authorName || 'Devtosh SuperBazaar Editorial Team',
+                authorName: d.authorName || 'DevTosh Superbazaar Editorial Team',
                 authorUrl: d.authorUrl,
                 coverImage: d.coverImage || '',
                 coverImageAlt: d.coverImageAlt || d.coverAlt || d.title || '',
@@ -2150,7 +2349,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
   if (root === 'home' || root === 'all' || root === '') {
     return renderPublicCatalog(
       'Curated Catalogue',
-      'Discover handpicked fashion, footwear, smartphones, mobile holders, and lifestyle essentials curated by Devtosh SuperBazaar.',
+      'Discover handpicked fashion, footwear, smartphones, mobile holders, and lifestyle essentials curated by DevTosh Superbazaar.',
       store.products,
       'all'
     );
@@ -2252,12 +2451,20 @@ export function view(route: ReturnType<typeof parseRoute>) {
   }
 
   if (root === 'product' && sub) {
-    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub);
+    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub) || DEMO_PRODUCTS.find(p => p.slug === sub);
     if (prod) return renderProductDetail(prod);
+
+    // If public products from Cloud Firestore have not finished loading yet,
+    // show a deliberate product detail loading state. NEVER render a transient 404!
+    if (!store.publicProductsLoaded) {
+      return renderProductLoading(sub);
+    }
+
+    return renderProductNotFound(sub);
   }
 
   if (root === 'go' && sub) {
-    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub);
+    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub) || DEMO_PRODUCTS.find(p => p.slug === sub);
     if (prod) {
       const destination = prod.affUrl || prod.retUrl;
       return {
@@ -2267,7 +2474,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
           <div class="w" style="max-width:640px;margin:40px auto;padding:32px 24px;background:var(--sf);border:1px solid var(--bd);text-align:center">
             <h1 class="f" style="font-size:24px;margin-top:0;color:var(--dp)">Visiting Partner Storefront</h1>
             <p class="mu" style="line-height:1.6;font-size:14.5px">
-              You are discovering <b>“${esc(prod.name)}”</b> curated by Devtosh SuperBazaar.
+              You are discovering <b>“${esc(prod.name)}”</b> curated by DevTosh Superbazaar.
             </p>
             ${destination ? `
               <p class="mu" style="line-height:1.6">
@@ -2366,7 +2573,7 @@ export function draw(isNew = false) {
   if (!app) return;
 
   app.innerHTML = v.html;
-  document.title = `${v.title} — Devtosh SuperBazaar`;
+  document.title = `${v.title} — DevTosh Superbazaar`;
   trackSpaPageView(document.title);
 
   // Synchronize dynamic meta description & canonical tag
@@ -2685,6 +2892,134 @@ document.addEventListener('click', async (e) => {
       const contentArea = document.getElementById('art-content') as HTMLTextAreaElement | null;
       contentArea?.focus();
     }
+    return;
+  }
+
+  // Markdown & AI Authoring: Trigger file picker
+  if ((e.target as HTMLElement).closest('#art-file-import-btn')) {
+    const fileInput = document.getElementById('art-file-import-input') as HTMLInputElement | null;
+    fileInput?.click();
+    return;
+  }
+
+  // Markdown & AI Authoring: Copy AI Prompt Template
+  if ((e.target as HTMLElement).closest('#art-copy-prompt-btn')) {
+    const btn = document.getElementById('art-copy-prompt-btn') as HTMLButtonElement | null;
+    const statusDiv = document.getElementById('art-import-status');
+    navigator.clipboard.writeText(AI_BLOG_PROMPT_TEMPLATE).then(() => {
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span>✓ AI Prompt Copied!</span>';
+        setTimeout(() => { if (btn) btn.innerHTML = orig; }, 2500);
+      }
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#E8F5E9';
+        statusDiv.style.border = '1px solid #C8E6C9';
+        statusDiv.style.color = '#1B5E20';
+        statusDiv.innerHTML = '<b>✓ AI Prompt copied to clipboard!</b> Paste it into Gemini, ChatGPT, or Claude to generate your article with matching frontmatter.';
+      }
+      announce('AI Blog prompt copied to clipboard');
+    }).catch(() => {
+      alert('Could not copy prompt automatically. Please open the guide below and copy manually.');
+    });
+    return;
+  }
+
+  // Markdown & AI Authoring: Auto-fill fields from Frontmatter in the content textarea
+  if ((e.target as HTMLElement).closest('#art-extract-fm-btn')) {
+    const contentArea = document.getElementById('art-content') as HTMLTextAreaElement | null;
+    const statusDiv = document.getElementById('art-import-status');
+    const raw = contentArea?.value || '';
+
+    if (!raw.trim()) {
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#FFEBEE';
+        statusDiv.style.border = '1px solid #FFCDD2';
+        statusDiv.style.color = '#B71C1C';
+        statusDiv.innerHTML = 'Please write or paste Markdown content into the text area before extracting fields.';
+      }
+      return;
+    }
+
+    const parsed = parseMarkdownWithFrontmatter(raw);
+    const updatedFields: string[] = [];
+
+    const titleInput = document.getElementById('art-title') as HTMLInputElement | null;
+    const slugInput = document.getElementById('art-slug') as HTMLInputElement | null;
+    const catInput = document.getElementById('art-category') as HTMLSelectElement | null;
+    const excerptInput = document.getElementById('art-excerpt') as HTMLTextAreaElement | null;
+    const coverInput = document.getElementById('art-cover') as HTMLInputElement | null;
+    const coverAltInput = document.getElementById('art-cover-alt') as HTMLInputElement | null;
+    const tagsInput = document.getElementById('art-tags') as HTMLInputElement | null;
+    const authorInput = document.getElementById('art-author') as HTMLInputElement | null;
+
+    if (parsed.title && titleInput) {
+      titleInput.value = parsed.title;
+      titleInput.dispatchEvent(new Event('input'));
+      updatedFields.push('Title');
+    }
+    if (parsed.slug && slugInput) {
+      slugInput.value = parsed.slug;
+      slugInput.dispatchEvent(new Event('input'));
+      updatedFields.push('Slug');
+    } else if (parsed.title && slugInput && !slugInput.value) {
+      slugInput.value = generateArticleSlug(parsed.title);
+      slugInput.dispatchEvent(new Event('input'));
+    }
+    if (parsed.category && catInput) {
+      for (let i = 0; i < catInput.options.length; i++) {
+        if (catInput.options[i].value.toLowerCase().includes(parsed.category.toLowerCase()) ||
+            parsed.category.toLowerCase().includes(catInput.options[i].value.toLowerCase())) {
+          catInput.selectedIndex = i;
+          updatedFields.push('Category');
+          break;
+        }
+      }
+    }
+    if (parsed.excerpt && excerptInput) {
+      excerptInput.value = parsed.excerpt;
+      excerptInput.dispatchEvent(new Event('input'));
+      updatedFields.push('Excerpt');
+    }
+    if (parsed.coverImage && coverInput) {
+      coverInput.value = parsed.coverImage;
+      coverInput.dispatchEvent(new Event('input'));
+      updatedFields.push('Cover Image');
+    }
+    if (parsed.coverImageAlt && coverAltInput) {
+      coverAltInput.value = parsed.coverImageAlt;
+    }
+    if (parsed.tags && parsed.tags.length && tagsInput) {
+      tagsInput.value = parsed.tags.join(', ');
+      updatedFields.push('Tags');
+    }
+    if (parsed.authorName && authorInput) {
+      authorInput.value = parsed.authorName;
+      updatedFields.push('Author');
+    }
+    if (parsed.hasFrontmatter && contentArea) {
+      contentArea.value = parsed.content;
+      contentArea.dispatchEvent(new Event('input'));
+      updatedFields.push('Body cleaned of frontmatter');
+    }
+
+    if (statusDiv) {
+      statusDiv.style.display = 'block';
+      if (updatedFields.length > 0) {
+        statusDiv.style.background = '#E8F5E9';
+        statusDiv.style.border = '1px solid #C8E6C9';
+        statusDiv.style.color = '#1B5E20';
+        statusDiv.innerHTML = `<b>✓ Frontmatter applied:</b> Populated ${updatedFields.join(', ')}.`;
+      } else {
+        statusDiv.style.background = '#FFF8E1';
+        statusDiv.style.border = '1px solid #FFE082';
+        statusDiv.style.color = '#F57F17';
+        statusDiv.innerHTML = 'No YAML frontmatter detected (<code>---</code> block). The text has been preserved as the article body.';
+      }
+    }
+    announce('Frontmatter parsed and form fields populated');
     return;
   }
 
@@ -3077,6 +3412,20 @@ document.addEventListener('input', (e) => {
     draw();
   }
 
+  if (target.id === 'p-name') {
+    const nameVal = (target as HTMLInputElement).value;
+    const slugInput = document.getElementById('p-slug') as HTMLInputElement;
+    const isNew = !(document.getElementById('p-id') as HTMLInputElement)?.value;
+    if (slugInput && (isNew || !slugInput.value)) {
+      slugInput.value = generateSlug(nameVal);
+    }
+  }
+
+  if (target.id === 'p-slug') {
+    const slugInput = target as HTMLInputElement;
+    slugInput.value = slugInput.value.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-');
+  }
+
   if (target.id === 'adm-art-q') {
     store.adminBlogFilter.q = (target as HTMLInputElement).value;
     draw();
@@ -3155,6 +3504,126 @@ document.addEventListener('selectionchange', () => {
 
 document.addEventListener('change', (e) => {
   const target = e.target as HTMLElement;
+
+  // Markdown file import via FileReader
+  if (target.id === 'art-file-import-input') {
+    const fileInput = target as HTMLInputElement;
+    const file = fileInput.files?.[0];
+    const statusDiv = document.getElementById('art-import-status');
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      const rawText = (loadEvt.target?.result as string) || '';
+      if (!rawText.trim()) {
+        if (statusDiv) {
+          statusDiv.style.display = 'block';
+          statusDiv.style.background = '#FFEBEE';
+          statusDiv.style.border = '1px solid #FFCDD2';
+          statusDiv.style.color = '#B71C1C';
+          statusDiv.innerHTML = `File "${esc(file.name)}" appears to be empty.`;
+        }
+        return;
+      }
+
+      const parsed = parseMarkdownWithFrontmatter(rawText);
+      const updatedFields: string[] = [];
+
+      const titleInput = document.getElementById('art-title') as HTMLInputElement | null;
+      const slugInput = document.getElementById('art-slug') as HTMLInputElement | null;
+      const catInput = document.getElementById('art-category') as HTMLSelectElement | null;
+      const excerptInput = document.getElementById('art-excerpt') as HTMLTextAreaElement | null;
+      const coverInput = document.getElementById('art-cover') as HTMLInputElement | null;
+      const coverAltInput = document.getElementById('art-cover-alt') as HTMLInputElement | null;
+      const tagsInput = document.getElementById('art-tags') as HTMLInputElement | null;
+      const authorInput = document.getElementById('art-author') as HTMLInputElement | null;
+      const contentArea = document.getElementById('art-content') as HTMLTextAreaElement | null;
+
+      if (parsed.title && titleInput) {
+        titleInput.value = parsed.title;
+        titleInput.dispatchEvent(new Event('input'));
+        updatedFields.push('Title');
+      } else if (!parsed.title && titleInput && !titleInput.value) {
+        // Fallback title from filename
+        const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+        titleInput.value = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+        titleInput.dispatchEvent(new Event('input'));
+        updatedFields.push('Title (from filename)');
+      }
+
+      if (parsed.slug && slugInput) {
+        slugInput.value = parsed.slug;
+        slugInput.dispatchEvent(new Event('input'));
+        updatedFields.push('Slug');
+      } else if (titleInput?.value && slugInput && !slugInput.value) {
+        slugInput.value = generateArticleSlug(titleInput.value);
+        slugInput.dispatchEvent(new Event('input'));
+      }
+
+      if (parsed.category && catInput) {
+        for (let i = 0; i < catInput.options.length; i++) {
+          if (catInput.options[i].value.toLowerCase().includes(parsed.category.toLowerCase()) ||
+              parsed.category.toLowerCase().includes(catInput.options[i].value.toLowerCase())) {
+            catInput.selectedIndex = i;
+            updatedFields.push('Category');
+            break;
+          }
+        }
+      }
+
+      if (parsed.excerpt && excerptInput) {
+        excerptInput.value = parsed.excerpt;
+        excerptInput.dispatchEvent(new Event('input'));
+        updatedFields.push('Excerpt');
+      }
+
+      if (parsed.coverImage && coverInput) {
+        coverInput.value = parsed.coverImage;
+        coverInput.dispatchEvent(new Event('input'));
+        updatedFields.push('Cover Image');
+      }
+
+      if (parsed.coverImageAlt && coverAltInput) {
+        coverAltInput.value = parsed.coverImageAlt;
+      }
+
+      if (parsed.tags && parsed.tags.length && tagsInput) {
+        tagsInput.value = parsed.tags.join(', ');
+        updatedFields.push('Tags');
+      }
+
+      if (parsed.authorName && authorInput) {
+        authorInput.value = parsed.authorName;
+        updatedFields.push('Author');
+      }
+
+      if (contentArea) {
+        contentArea.value = parsed.content;
+        contentArea.dispatchEvent(new Event('input'));
+        updatedFields.push('Story Body');
+      }
+
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#E8F5E9';
+        statusDiv.style.border = '1px solid #C8E6C9';
+        statusDiv.style.color = '#1B5E20';
+        statusDiv.innerHTML = `<b>✓ File imported successfully (${esc(file.name)}):</b> Populated ${updatedFields.join(', ')}.`;
+      }
+      announce(`Imported ${file.name}`);
+    };
+    reader.onerror = () => {
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#FFEBEE';
+        statusDiv.style.border = '1px solid #FFCDD2';
+        statusDiv.style.color = '#B71C1C';
+        statusDiv.innerHTML = `Failed to read file "${esc(file.name)}".`;
+      }
+    };
+    reader.readAsText(file);
+    return;
+  }
 
   if (target.id === 'art-modal-prod-select') {
     const sel = target as HTMLSelectElement;
@@ -3292,6 +3761,16 @@ document.addEventListener('submit', async (e) => {
     const existingId = (document.getElementById('p-id') as HTMLInputElement).value;
     const name = (document.getElementById('p-name') as HTMLInputElement).value.trim();
     const slug = (document.getElementById('p-slug') as HTMLInputElement).value.trim().toLowerCase();
+
+    // Enforce slug uniqueness across existing admin and public products
+    const duplicate = (store.adminProducts.length ? store.adminProducts : store.products).find(
+      p => p.slug === slug && p.id !== existingId
+    );
+    if (duplicate) {
+      alert(`The URL slug "${slug}" is already in use by product "${duplicate.name}". Please choose a distinct URL slug to ensure proper catalog routing.`);
+      return;
+    }
+
     const brand = (document.getElementById('p-brand') as HTMLInputElement).value.trim();
     const cat = (document.getElementById('p-cat') as HTMLInputElement).value.trim();
     const price = Number((document.getElementById('p-price') as HTMLInputElement).value || 0);
@@ -3388,7 +3867,7 @@ document.addEventListener('submit', async (e) => {
     const metaDesc = (document.getElementById('art-meta-desc') as HTMLTextAreaElement)?.value.trim() || '';
     const excerpt = (document.getElementById('art-excerpt') as HTMLTextAreaElement)?.value.trim() || '';
     const content = (document.getElementById('art-content') as HTMLTextAreaElement)?.value.trim() || '';
-    const authorName = (document.getElementById('art-author') as HTMLInputElement)?.value.trim() || 'Devtosh SuperBazaar Editorial Team';
+    const authorName = (document.getElementById('art-author') as HTMLInputElement)?.value.trim() || 'DevTosh Superbazaar Editorial Team';
     const authorUrl = (document.getElementById('art-author-url') as HTMLInputElement)?.value.trim() || undefined;
     const coverImage = (document.getElementById('art-cover') as HTMLInputElement)?.value.trim() || '';
     const coverAlt = (document.getElementById('art-cover-alt') as HTMLInputElement)?.value.trim() || title;
@@ -3750,6 +4229,57 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Clean path and history router listener
+
+// Exclusive FAQ accordion listener across all browsers and aria-expanded synchronizer
+document.addEventListener('click', (e) => {
+  const summary = (e.target as HTMLElement).closest('.faq-q') as HTMLElement | null;
+  if (!summary) return;
+  const details = summary.closest('details.faq-item') as HTMLDetailsElement | null;
+  if (!details) return;
+  const parentList = details.closest('.faqs-list');
+  if (parentList) {
+    const isCurrentlyOpen = details.hasAttribute('open');
+    if (!isCurrentlyOpen) {
+      const openSiblings = parentList.querySelectorAll<HTMLDetailsElement>('details.faq-item[open]');
+      openSiblings.forEach(sib => {
+        if (sib !== details) {
+          sib.removeAttribute('open');
+          const sibSummary = sib.querySelector('.faq-q');
+          if (sibSummary) sibSummary.setAttribute('aria-expanded', 'false');
+        }
+      });
+      summary.setAttribute('aria-expanded', 'true');
+    } else {
+      summary.setAttribute('aria-expanded', 'false');
+    }
+  }
+});
+
+document.addEventListener('toggle', (e) => {
+  const target = e.target as HTMLDetailsElement;
+  if (!target || !target.classList?.contains('faq-item')) return;
+  const isExpanded = target.open;
+  const summary = target.querySelector('.faq-q');
+  if (summary) {
+    summary.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+  }
+  if (isExpanded) {
+    const parentList = target.closest('.faqs-list');
+    if (parentList) {
+      const siblings = parentList.querySelectorAll<HTMLDetailsElement>('.faq-item[open]');
+      siblings.forEach(sibling => {
+        if (sibling !== target) {
+          sibling.removeAttribute('open');
+          const sibSummary = sibling.querySelector('.faq-q');
+          if (sibSummary) {
+            sibSummary.setAttribute('aria-expanded', 'false');
+          }
+        }
+      });
+    }
+  }
+}, true);
+
 window.addEventListener('popstate', () => {
   closeMobileMenu();
   draw(true);
@@ -3794,6 +4324,13 @@ document.addEventListener('click', (e) => {
 // Initialization on DOM Ready
 // --------------------------------------------------------------------------
 async function init() {
+  const initialRoute = parseRoute();
+  // On direct navigation to product detail, search, or wishlist routes, draw immediately
+  // (renders cached product immediately if available, or renders dedicated loading skeleton)
+  if (initialRoute.root === 'product' || initialRoute.root === 'wishlist' || initialRoute.root === 'search' || initialRoute.root === 'go') {
+    draw();
+  }
+
   // Listen to Firebase Auth state
   onAuthStateChanged(auth, async (user) => {
     store.currentUser = user;
@@ -3808,7 +4345,11 @@ async function init() {
       store.adminProducts = [];
       store.adminArticles = [];
     }
-    draw();
+    // Only redraw on auth state change if products are already loaded or if on an admin route
+    const route = parseRoute();
+    if (route.root === 'admin' || store.publicProductsLoaded) {
+      draw();
+    }
   });
 
   // Load public products and editorial articles from Cloud Firestore
