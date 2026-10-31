@@ -36,16 +36,27 @@
       "@type": "Organization",
       "@id": "https://devtoshsuperbazaar.github.io/#organization",
       "name": "DevTosh Superbazaar",
-      "url": "https://devtoshsuperbazaar.github.io",
+      "url": "https://devtoshsuperbazaar.github.io/",
       "logo": "https://devtoshsuperbazaar.github.io/favicon-48x48.png",
       "sameAs": [
         "https://www.instagram.com/devtoshsuperbazaar/"
+      ],
+      "contactPoint": [
+        {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "devtoshsuperbazaar@gmail.com",
+          "availableLanguage": [
+            "English",
+            "Hindi"
+          ]
+        }
       ]
     },
     {
       "@type": "WebSite",
       "@id": "https://devtoshsuperbazaar.github.io/#website",
-      "url": "https://devtoshsuperbazaar.github.io",
+      "url": "https://devtoshsuperbazaar.github.io/",
       "name": "DevTosh Superbazaar",
       "description": "Curated fashion, smartphones, mobile accessories, footwear and lifestyle affiliate discovery.",
       "publisher": {
@@ -58,6 +69,16 @@
           "urlTemplate": "https://devtoshsuperbazaar.github.io/?q={search_term_string}"
         },
         "query-input": "required name=search_term_string"
+      }
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://devtoshsuperbazaar.github.io/#webpage",
+      "url": "https://devtoshsuperbazaar.github.io/",
+      "name": "DevTosh Superbazaar — Curated Fashion, Mobiles & Lifestyle Discovery",
+      "description": "Editorial discovery catalog and affiliate shopping platform for women's, men's, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by DevTosh Superbazaar.",
+      "isPartOf": {
+        "@id": "https://devtoshsuperbazaar.github.io/#website"
       }
     }
   ]
@@ -226,6 +247,11 @@ details[open] summary::after{content:'\2013'}
 .lm{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 34px;border:0;color:#fff;font-weight:600;letter-spacing:.04em;background:var(--sat);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 8px 16px -8px rgba(89,54,58,.55);transition:filter .2s,transform .15s}
 .lm:hover{color:#fff;filter:brightness(1.08);transform:translateY(-1px)}
 .lm:active{transform:translateY(0)}
+.vid-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border:1.5px solid var(--wn);background:var(--sf);color:var(--wn);font-weight:600;font-size:13px;letter-spacing:.03em;text-decoration:none;transition:all .2s;border-radius:0;box-sizing:border-box}
+.vid-btn:hover{background:rgba(134,83,86,.08);color:var(--dp);border-color:var(--dp);transform:translateY(-1px)}
+.vid-btn:active{transform:translateY(0)}
+.vid-btn svg{width:20px;height:20px;flex-shrink:0;transition:transform .2s}
+.vid-btn:hover svg{transform:scale(1.08)}
 .mo{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:48px;color:var(--mu)}
 .em{padding:64px 0;text-align:center}
 .em h2{margin:0 0 10px;font-size:28px;font-weight:500}
@@ -557,6 +583,7 @@ textarea.adm-input{height:auto;padding:10px 12px}
   .dt{gap:20px;margin-top:12px}
   .dt h1{font-size:22px;margin:4px 0 10px}
   .dt .lm{width:100%;text-align:center}
+  .dt .vid-btn{width:100%;text-align:center}
   .dt .wb{width:100%;justify-content:center}
   .sh-bar{padding:10px 12px;gap:8px}
   .sh-btn{flex:1;justify-content:center;padding:0 8px;font-size:11.5px}
