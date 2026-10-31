@@ -57,7 +57,8 @@ import {
   isHomeLivingProduct,
   isMenProduct,
   SITE_CATEGORIES,
-  CategoryMeta
+  CategoryMeta,
+  isValidProductVideoUrl
 } from './productData.ts';
 
 export type { Product, CategoryMeta };
@@ -70,7 +71,8 @@ export {
   isAccessoriesProduct,
   isHomeLivingProduct,
   isMenProduct,
-  SITE_CATEGORIES
+  SITE_CATEGORIES,
+  isValidProductVideoUrl
 };
 
 export interface Category {
@@ -285,9 +287,12 @@ export async function loadPublicProducts() {
         col: d.col || 'Neutral',
         sizes: Array.isArray(d.sizes) ? d.sizes : (typeof d.sizes === 'string' ? d.sizes.split(',') : ['One size']),
         ret: d.ret || 'Partner Retailer',
-        retUrl: d.retUrl || '',
-        affUrl: d.affUrl || '',
+        retUrl: d.retUrl || d.retailerProductUrl || d.affUrl || '',
+        affUrl: d.affUrl || d.affiliateUrl || d.retUrl || d.retailerProductUrl || '',
+        affiliateUrl: d.affiliateUrl || '',
+        retailerProductUrl: d.retailerProductUrl || '',
         imgUrl: d.imgUrl || '',
+        videoUrl: d.videoUrl || '',
         desc: d.desc || '',
         published: true,
         featured: !!d.featured,
@@ -304,14 +309,14 @@ export async function loadPublicProducts() {
         localStorage.setItem('dsb_live_products', JSON.stringify(liveItems));
       } catch {}
     } else {
-      // Seamless fallback to curated demo collection if database has zero published items
-      store.products = DEMO_PRODUCTS;
+      // Empty collection if database has zero published items - no demo fallbacks
+      store.products = [];
       store.publicProductsLoaded = true;
     }
   } catch (error) {
-    console.warn('Cloud Firestore query failed or offline, checking fallback:', error);
+    console.warn('Cloud Firestore query failed or offline:', error);
     if (store.products.length === 0) {
-      store.products = DEMO_PRODUCTS;
+      store.products = [];
     }
     store.publicProductsLoaded = true;
   }
@@ -336,9 +341,12 @@ export async function loadAdminProducts() {
         col: d.col || '',
         sizes: Array.isArray(d.sizes) ? d.sizes : (typeof d.sizes === 'string' ? d.sizes.split(',') : []),
         ret: d.ret || '',
-        retUrl: d.retUrl || '',
-        affUrl: d.affUrl || '',
+        retUrl: d.retUrl || d.retailerProductUrl || d.affUrl || '',
+        affUrl: d.affUrl || d.affiliateUrl || d.retUrl || d.retailerProductUrl || '',
+        affiliateUrl: d.affiliateUrl || '',
+        retailerProductUrl: d.retailerProductUrl || '',
         imgUrl: d.imgUrl || '',
+        videoUrl: d.videoUrl || '',
         desc: d.desc || '',
         published: !!d.published,
         featured: !!d.featured,
@@ -370,7 +378,7 @@ export async function loadPublicArticles() {
         excerpt: d.excerpt || '',
         content: d.content || '',
         authorName: d.authorName || 'DevTosh Superbazaar Editorial Team',
-        authorUrl: d.authorUrl,
+        authorUrl: d.authorUrl || '',
         coverImage: d.coverImage || '',
         coverImageAlt: d.coverImageAlt || d.coverAlt || d.title || '',
         category: d.category || 'Shopping Guides',
@@ -379,10 +387,10 @@ export async function loadPublicArticles() {
         updatedAt: d.updatedAt || new Date().toISOString(),
         published: true,
         noindex: !!d.noindex || !!d.noIndex,
-        canonicalUrl: d.canonicalUrl || d.canonicalOverride,
-        ogTitle: d.ogTitle,
-        ogDesc: d.ogDesc || d.ogDescription,
-        ogImage: d.ogImage,
+        canonicalUrl: d.canonicalUrl || d.canonicalOverride || '',
+        ogTitle: d.ogTitle || '',
+        ogDesc: d.ogDesc || d.ogDescription || '',
+        ogImage: d.ogImage || '',
         hasAffiliateLinks: d.hasAffiliateLinks !== false && d.affiliateDisclosure !== false,
         readTimeMinutes: Number(d.readTimeMinutes) || calculateReadTime(d.content || ''),
         relatedProducts: Array.isArray(d.relatedProducts) ? d.relatedProducts : []
@@ -392,11 +400,11 @@ export async function loadPublicArticles() {
     if (liveItems.length > 0) {
       store.articles = liveItems;
     } else {
-      store.articles = SEED_ARTICLES.filter(a => a.published);
+      store.articles = [];
     }
   } catch (error) {
-    console.warn('Could not query published articles from Firestore, using seed articles:', error);
-    store.articles = SEED_ARTICLES.filter(a => a.published);
+    console.warn('Could not query published articles from Firestore:', error);
+    store.articles = [];
   }
 }
 
@@ -415,7 +423,7 @@ export async function loadAdminArticles() {
         excerpt: d.excerpt || '',
         content: d.content || '',
         authorName: d.authorName || 'DevTosh Superbazaar Editorial Team',
-        authorUrl: d.authorUrl,
+        authorUrl: d.authorUrl || '',
         coverImage: d.coverImage || '',
         coverImageAlt: d.coverImageAlt || d.coverAlt || d.title || '',
         category: d.category || 'Shopping Guides',
@@ -424,10 +432,10 @@ export async function loadAdminArticles() {
         updatedAt: d.updatedAt || new Date().toISOString(),
         published: !!d.published,
         noindex: !!d.noindex || !!d.noIndex,
-        canonicalUrl: d.canonicalUrl || d.canonicalOverride,
-        ogTitle: d.ogTitle,
-        ogDesc: d.ogDesc || d.ogDescription,
-        ogImage: d.ogImage,
+        canonicalUrl: d.canonicalUrl || d.canonicalOverride || '',
+        ogTitle: d.ogTitle || '',
+        ogDesc: d.ogDesc || d.ogDescription || '',
+        ogImage: d.ogImage || '',
         hasAffiliateLinks: d.hasAffiliateLinks !== false && d.affiliateDisclosure !== false,
         readTimeMinutes: Number(d.readTimeMinutes) || calculateReadTime(d.content || ''),
         relatedProducts: Array.isArray(d.relatedProducts) ? d.relatedProducts : []
@@ -437,11 +445,11 @@ export async function loadAdminArticles() {
     if (items.length > 0) {
       store.adminArticles = items;
     } else {
-      store.adminArticles = [...SEED_ARTICLES];
+      store.adminArticles = [];
     }
   } catch (error) {
     console.warn('Error loading admin articles from Firestore:', error);
-    store.adminArticles = [...SEED_ARTICLES];
+    store.adminArticles = [];
   }
 }
 
@@ -573,7 +581,7 @@ function renderProductImage(p: Product, isBig = false): string {
 
   if (p.imgUrl) {
     return `<${tag} class="ph${isBig ? ' big' : ''}" style="background:#fff">` +
-      `<img src="${esc(p.imgUrl)}" alt="${esc(p.name)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;transition:transform .4s ease" onerror="this.style.display='none';if(this.nextElementSibling){this.nextElementSibling.style.display='grid';}" />` +
+      `<img src="${esc(p.imgUrl)}" alt="${esc(p.name)}" width="${isBig ? '600' : '400'}" height="${isBig ? '750' : '500'}" loading="lazy" style="width:100%;height:100%;object-fit:cover;transition:transform .4s ease" onerror="this.style.display='none';if(this.nextElementSibling){this.nextElementSibling.style.display='grid';}" />` +
       `<div class="ph-fallback" style="display:none;width:100%;height:100%;place-items:center;background:var(--bl);color:var(--mu);font-size:12px">Image unavailable</div>` +
     `</${isBig ? 'div' : 'a'}>`;
   }
@@ -967,7 +975,13 @@ function renderProductDetail(p: Product) {
               <dt>Product SKU</dt><dd>${esc(p.slug)}</dd>
             </dl>
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:28px">
-              <a class="lm" href="${esc(p.affUrl || p.retUrl || `#/go/${p.slug}`)}" target="_blank" rel="noopener noreferrer">Shop at ${esc(p.ret)} ↗</a>
+              <a class="lm" href="${esc(p.affUrl || p.affiliateUrl || p.retUrl || p.retailerProductUrl || `#/go/${p.slug}`)}" target="_blank" rel="noopener noreferrer">Shop at ${esc(p.ret)} ↗</a>
+              ${isValidProductVideoUrl(p.videoUrl) ? `
+                <a class="vid-btn" href="${esc(p.videoUrl!.trim())}" target="_blank" rel="noopener noreferrer" aria-label="Watch product video for ${esc(p.name)} on Instagram">
+                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+                  <span>Watch Product Video</span>
+                </a>
+              ` : ''}
               ${renderWishlistBtn(p, 'wb')}
             </div>
 
@@ -992,7 +1006,7 @@ function renderProductDetail(p: Product) {
             <p class="dc">Product availability, pricing, and merchant details are subject to verification on the retailer’s website.</p>
           </div>
         </div>
-        <h2 class="f rh">You may also like</h2>
+        <h2 class="f rh">Recommended Similar Finds</h2>
         <div class="g">${rel.map(renderProductCard).join('')}</div>
         ${renderFaqsHtml([
           {
@@ -1007,7 +1021,7 @@ function renderProductDetail(p: Product) {
             q: 'What is the return and shipping policy?',
             a: `Because orders are placed directly on ${p.ret}, shipping speeds, delivery fees, and return or exchange windows follow ${p.ret}'s official customer care policies.`
           }
-        ], `About This Product — FAQs`)}
+        ], 'Product Details & Ordering FAQs')}
       </section>
     `
   };
@@ -1066,35 +1080,35 @@ export function renderProductNotFound(slug: string) {
 function renderWishlistView() {
   const saved = store.products.filter(p => store.wishlistSlugs.includes(p.slug));
   return {
-    title: 'Wishlist',
+    title: 'Saved Items & Favourites | DevTosh Superbazaar',
     navKey: 'wishlist',
     noindex: true,
     canonical: 'https://devtoshsuperbazaar.github.io/wishlist/',
     html: `
       <section class="w pgs wide">
-        ${renderBreadcrumb([['Home', '/'], ['Wishlist']])}
+        ${renderBreadcrumb([['Home', '/'], ['Saved Items']])}
         <div class="tt">
-          <h1 class="f" tabindex="-1">Your Wishlist</h1>
-          <span class="mu">${saved.length} saved items</span>
+          <h1 class="f" tabindex="-1">Saved Items</h1>
+          <span class="mu">${saved.length} items saved</span>
         </div>
         ${saved.length ? `
           <div class="g" style="margin-top:28px">${saved.map(renderProductCard).join('')}</div>
         ` : `
           <div style="margin-top:24px">
-            <p class="lead">Your wishlist is currently empty. Click the heart icon on any product to save it here for later reference (stored in your browser without requiring an account).</p>
+            <p class="lead">You have not saved any items yet. Tap the heart icon on any product to keep it here for quick reference on this device.</p>
             <p style="margin-top:20px"><a class="vp" href="/">Explore All Collections →</a></p>
           </div>
         `}
         ${renderFaqsHtml([
           {
-            q: 'How does the DevTosh Superbazaar Wishlist work?',
-            a: 'Items you save by clicking the heart icon are stored privately in your browser using local storage. You do not need to create an account or provide personal data.'
+            q: 'How do saved bookmarks work?',
+            a: 'Items you bookmark by tapping the heart icon stay privately on your device in browser local storage. You do not need to register, create passwords, or submit personal details.'
           },
           {
-            q: 'Will my saved wishlist items expire?',
-            a: 'Saved items remain in your browser until you remove them or clear your browser browsing data. Wishlist items are never shared with third parties or indexed by search engines.'
+            q: 'Will my saved selections expire?',
+            a: 'Saved products remain on this device until you remove them or reset your browser browsing data. They are never transmitted to external servers or indexed by search engines.'
           }
-        ], 'Wishlist Questions & Privacy')}
+        ], 'Frequently Asked Questions About Saved Items')}
       </section>
     `
   };
@@ -1605,14 +1619,31 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
             </div>
 
             <p style="font-size:12.5px;margin:0 0 12px;line-height:1.45;color:var(--mu)">
-              Paste any product URL from <b>Amazon</b> (<code>amazon.in/dp/...</code>), <b>Flipkart</b> (<code>flipkart.com/.../p/...</code>), <b>Myntra</b>, <b>Ajio</b>, or <b>Meesho</b>. We will automatically detect the merchant and extract <b>Title</b>, <b>Price</b>, <b>MRP</b>, <b>Category</b>, and <b>Image URL</b>!
+              Paste an affiliate shopping link or retailer link (such as <b>Meesho</b> <code>/af_invite/...</code>, <b>Amazon</b>, <b>Flipkart</b>, <b>Myntra</b>, or <b>Ajio</b>). The link is automatically preserved in the <b>Shopping Link (Affiliate URL)</b> field!
             </p>
 
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <input type="url" id="import-url" placeholder="https://www.amazon.in/dp/... or https://www.flipkart.com/.../p/... or meesho.com/..." class="adm-input" style="flex:1;min-width:240px;background:var(--sf)" />
+              <input type="url" id="import-url" placeholder="https://www.meesho.com/af_invite/... or https://www.amazon.in/dp/... or meesho.com/..." class="adm-input" style="flex:1;min-width:240px;background:var(--sf)" />
               <button type="button" id="import-btn" class="lm" style="white-space:nowrap;padding:0 20px;height:42px;font-weight:600">
-                ⚡ Extract &amp; Auto-Fill All Info
+                ⚡ Extract Data with Link
               </button>
+            </div>
+
+            <div id="import-status" style="font-size:12.5px;margin-top:10px"></div>
+
+            <!-- Stage B: Direct Product URL (for extraction only) Container -->
+            <div id="stage-b-container" style="display:none;margin-top:14px;background:#FFF8E1;border:1px solid #FFE082;border-left:4px solid #FFA000;padding:14px 16px;border-radius:4px">
+              <div id="stage-b-message" style="color:#5D4037;font-size:13px;line-height:1.5;margin-bottom:12px">
+                We couldn't automatically access the product page through this affiliate link. Please paste the direct product URL so we can extract the product information. Your affiliate link will remain saved as the customer shopping link.
+              </div>
+              <div class="adm-field" style="margin-bottom:8px">
+                <label for="direct-extract-url" style="font-weight:700;font-size:12.5px;color:#3E2723">Direct Product URL (for extraction only)</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <input type="url" id="direct-extract-url" placeholder="https://www.meesho.com/s/p/... or https://www.meesho.com/.../p/..." class="adm-input" style="flex:1;min-width:240px;background:#fff" />
+                  <button type="button" id="direct-extract-btn" class="lm" style="white-space:nowrap;padding:0 18px;height:42px;font-weight:600">Extract from Direct URL</button>
+                </div>
+              </div>
+              <div id="direct-extract-status" style="font-size:12px;margin-top:6px"></div>
             </div>
 
             <!-- Optional Retailer Raw Details / Specs Accordion -->
@@ -1630,8 +1661,6 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
                 </button>
               </div>
             </details>
-
-            <div id="import-status" style="font-size:12.5px;margin-top:10px"></div>
           </div>
 
           <!-- Main Product Form -->
@@ -1748,14 +1777,23 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
               </div>
 
               <div class="adm-field">
-                <label for="p-returl">Retailer Product URL</label>
-                <input type="url" id="p-returl" value="${esc(p?.retUrl || '')}" class="adm-input" placeholder="https://www.meesho.com/product/..." />
+                <label for="p-affurl">Shopping Link (Affiliate URL) *</label>
+                <input type="url" id="p-affurl" name="affUrl" required value="${esc(p?.affUrl || p?.affiliateUrl || p?.retUrl || p?.retailerProductUrl || '')}" class="adm-input" placeholder="https://www.meesho.com/af_invite/..." />
+                <!-- Preserves legacy retUrl compatibility -->
+                <input type="hidden" id="p-returl" value="${esc(p?.retUrl || p?.affUrl || '')}" />
               </div>
             </div>
 
+            <p class="mu" style="font-size:11.5px;margin:-8px 0 16px">
+              This required field stores the exact affiliate URL that customers use when clicking the &ldquo;Shop at {Retailer}&rdquo; button. All tracking parameters are preserved.
+            </p>
+
             <div class="adm-field">
-              <label for="p-affurl">Affiliate / Tracking URL <span class="mu">(Optional partner redirect)</span></label>
-              <input type="url" id="p-affurl" value="${esc(p?.affUrl || '')}" class="adm-input" placeholder="https://partner.network/click?..." />
+              <label for="p-videourl">Product Video URL <span class="mu">(Optional Instagram Reel link)</span></label>
+              <input type="url" id="p-videourl" name="videoUrl" value="${esc(p?.videoUrl || '')}" class="adm-input" placeholder="https://www.instagram.com/reel/C-..." />
+              <p class="mu" style="font-size:11.5px;margin:4px 0 0">
+                Paste an Instagram Reel URL to display a &ldquo;Watch Product Video&rdquo; button on the product details page.
+              </p>
             </div>
 
             <div style="margin:20px 0;padding:16px;background:var(--bl);border-radius:2px;display:flex;flex-direction:column;gap:12px">
@@ -1899,6 +1937,53 @@ function renderAdminSettings() {
 
             <button type="submit" class="lm" style="margin-top:16px">Save Settings to Cloud Firestore</button>
           </form>
+
+          <div class="adm-card" style="margin-top:24px">
+            <h3 class="f" style="font-size:18px;margin:0 0 8px;color:var(--dp)">Sitemap &amp; Search Engine Synchronization</h3>
+            <p class="mu" style="font-size:13.5px;line-height:1.6;margin:0 0 16px">
+              Because DevTosh Superbazaar is statically hosted on GitHub Pages for blazing speed and security, search engine sitemaps (<code>sitemap.xml</code>) and prerendered HTML pages are generated directly from Cloud Firestore during GitHub Actions builds.
+            </p>
+
+            <div style="background:var(--bl);border:1px solid var(--bd);padding:14px 16px;border-radius:4px;margin-bottom:16px;font-size:13px;line-height:1.6">
+              <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bd)">
+                <span>Published Products in Firestore:</span>
+                <b>${store.adminProducts.length || store.products.length}</b>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bd)">
+                <span>Published Articles in Firestore:</span>
+                <b>${store.adminArticles.filter(a => a.published).length || store.articles.length}</b>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0">
+                <span>Automatic Sync Schedule:</span>
+                <span style="color:var(--gr);font-weight:600">Every 6 Hours (Automated via GitHub Actions)</span>
+              </div>
+            </div>
+
+            <div style="font-size:13px;line-height:1.6;color:var(--mu);margin-bottom:16px">
+              <strong>Need immediate search engine indexing?</strong> You can trigger an instant sync on-demand anytime you publish a new product or article without waiting for the 6-hour cron cycle:
+            </div>
+
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+              <a
+                class="lm"
+                href="https://github.com/devtoshsuperbazaar/devtoshsuperbazaar.github.io/actions/workflows/deploy.yml"
+                target="_blank"
+                rel="noopener noreferrer"
+                style="text-decoration:none;display:inline-flex;align-items:center;gap:6px"
+              >
+                <span>Trigger Instant Sync (GitHub Actions) ↗</span>
+              </a>
+              <a
+                class="vp"
+                href="/sitemap.xml"
+                target="_blank"
+                rel="noopener noreferrer"
+                style="text-decoration:none;display:inline-flex;align-items:center;gap:6px"
+              >
+                <span>View Live sitemap.xml ↗</span>
+              </a>
+            </div>
+          </div>
         </div>
 
         ${renderAdminNavigation('settings')}
@@ -1912,7 +1997,7 @@ function renderAdminSettings() {
 // --------------------------------------------------------------------------
 function renderAboutView() {
   return {
-    title: 'About DevTosh Superbazaar',
+    title: 'About DevTosh Superbazaar — Curated Product Discovery & Affiliate Guide',
     navKey: 'about',
     html: `
       <section class="w pgs">
@@ -1921,28 +2006,35 @@ function renderAboutView() {
           <h1 class="f" tabindex="-1">About DevTosh Superbazaar</h1>
         </div>
         <p class="lead" style="margin-top:16px">
-          DevTosh Superbazaar is an independent fashion discovery and editorial curation destination. We simplify menswear shopping by handpicking timeless wardrobe staples, relaxed cuts, versatile outerwear, and refined footwear from respected global and homegrown labels.
+          DevTosh Superbazaar is an independent online product discovery catalogue. We curate handpicked fashion, smartphones, footwear, mobile accessories, and lifestyle essentials from trusted Indian retail marketplaces.
         </p>
 
         <div style="margin-top:36px;display:flex;flex-direction:column;gap:24px">
           <div class="adm-card">
-            <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Our Editorial Philosophy</h2>
-            <p class="mu" style="line-height:1.6;margin:0">
-              Modern fashion shouldn’t be a maze of endless discount bins and fast-fashion clutter. At DevTosh Superbazaar, our team scours merchant inventories to assemble a tightly edited catalogue centered around fit, fabric durability, color versatility, and fair pricing.
+            <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Independent Product Discovery</h2>
+            <p class="mu" style="line-height:1.65;margin:0">
+              DevTosh Superbazaar is not a retailer, manufacturer, warehouse operator, or logistics company. We act as an editorial discovery guide that surfaces high-value, verified products across trusted Indian ecommerce platforms (including Meesho and partner retail marketplaces). When you find an item you like, clicking "Shop at Retailer" takes you directly to the verified merchant store to complete checkout.
             </p>
           </div>
 
           <div class="adm-card">
-            <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">How Discovery & Affiliate Shopping Works</h2>
-            <p class="mu" style="line-height:1.6;margin:0">
-              We do not stock physical inventory in our own warehouses. Instead, DevTosh Superbazaar connects you directly to verified brand partners and retailers. When you discover an item you love, clicking “Shop at Retailer” brings you directly to the merchant’s storefront to complete your purchase.
+            <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Collections We Curate</h2>
+            <p class="mu" style="line-height:1.65;margin:0">
+              Our catalogue spans Women’s ethnic and western wear, Men’s shirts and wardrobe staples, Kids and baby clothing, Footwear, Mobile accessories and holders, and everyday Home & Living values. Every product is evaluated for design merit, fabric quality, fair pricing, and positive merchant feedback.
             </p>
           </div>
 
           <div class="adm-card">
-            <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Guest-First Experience</h2>
-            <p class="mu" style="line-height:1.6;margin:0">
-              We respect your privacy. Customers can browse every collection and maintain a persistent personal Wishlist entirely in their browser—without forced account creation, passwords, or tracking cookies.
+            <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Guest-First Privacy Architecture</h2>
+            <p class="mu" style="line-height:1.65;margin:0">
+              We respect your privacy. DevTosh Superbazaar requires no forced account creation, passwords, or personal data to browse collections or save favorite products. Your saved selections remain strictly on your own device in your browser’s local storage.
+            </p>
+          </div>
+
+          <div class="adm-card">
+            <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Editorial Leadership & Desk</h2>
+            <p class="mu" style="line-height:1.65;margin:0">
+              DevTosh Superbazaar is operated and curated by its editorial desk. For questions, suggestions, or brand collaborations, connect with us at <a href="mailto:devtoshsuperbazaar@gmail.com" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar@gmail.com</a> or on Instagram <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);text-decoration:underline">@devtoshsuperbazaar</a>.
             </p>
           </div>
         </div>
@@ -1957,7 +2049,7 @@ function renderAboutView() {
 
 function renderContactView() {
   return {
-    title: 'Contact DevTosh Superbazaar',
+    title: 'Contact DevTosh Superbazaar — Editorial Inquiries & Support',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -1966,14 +2058,14 @@ function renderContactView() {
           <h1 class="f" tabindex="-1">Contact & Inquiries</h1>
         </div>
         <p class="lead" style="margin-top:16px">
-          Have questions about our curated selections, partner brand integrations, or platform feedback? We’d love to hear from you.
+          Have feedback on our product curation, collaboration inquiries, or general questions about DevTosh Superbazaar? We welcome your messages.
         </p>
 
         <div style="margin-top:32px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">
           <div class="adm-card">
-            <h2 class="f" style="font-size:18px;margin:0 0 8px;color:var(--dp)">General & Editorial Inquiries</h2>
-            <p class="mu" style="font-size:13.5px;line-height:1.5;margin:0 0 12px">
-              For feedback on featured collections, style curation, or general inquiries.
+            <h2 class="f" style="font-size:18px;margin:0 0 8px;color:var(--dp)">Editorial & General Inquiries</h2>
+            <p class="mu" style="font-size:13.5px;line-height:1.55;margin:0 0 12px">
+              For feedback on featured collections, style curation, or general website inquiries.
             </p>
             <div style="font-weight:600;color:var(--wn)">
               <a href="mailto:devtoshsuperbazaar@gmail.com" style="color:inherit;text-decoration:none">devtoshsuperbazaar@gmail.com</a>
@@ -1982,8 +2074,8 @@ function renderContactView() {
 
           <div class="adm-card">
             <h2 class="f" style="font-size:18px;margin:0 0 8px;color:var(--dp)">Brand & Retailer Partnerships</h2>
-            <p class="mu" style="font-size:13.5px;line-height:1.5;margin:0 0 12px">
-              Retailers and independent brands interested in being featured in our catalogue.
+            <p class="mu" style="font-size:13.5px;line-height:1.55;margin:0 0 12px">
+              For independent labels and marketplace sellers interested in editorial product placement.
             </p>
             <div style="font-weight:600;color:var(--wn)">
               <a href="mailto:devtoshsuperbazaar@gmail.com" style="color:inherit;text-decoration:none">devtoshsuperbazaar@gmail.com</a>
@@ -1991,10 +2083,17 @@ function renderContactView() {
           </div>
         </div>
 
-        <div class="adm-card" style="margin-top:24px">
+        <div class="adm-card" style="margin-top:20px">
           <h2 class="f" style="font-size:18px;margin:0 0 10px;color:var(--dp)">Social & Updates</h2>
-          <p class="mu" style="font-size:13.5px;line-height:1.5;margin:0">
-            Follow our daily drops, style edits, and seasonal lookbooks at <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);font-weight:600;text-decoration:underline">${esc(store.settings.contactHandle || '@devtoshsuperbazaar')}</a>.
+          <p class="mu" style="font-size:13.5px;line-height:1.55;margin:0">
+            Follow our daily product discoveries and style edits on Instagram at <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);font-weight:600;text-decoration:underline">@devtoshsuperbazaar</a>.
+          </p>
+        </div>
+
+        <div class="adm-card" style="margin-top:20px;border-left:4px solid var(--wn)">
+          <h2 class="f" style="font-size:18px;margin:0 0 8px;color:var(--dp)">Order Tracking, Shipping & Returns Notice</h2>
+          <p class="mu" style="font-size:13.5px;line-height:1.6;margin:0">
+            Because orders, transactions, payment processing, shipping, and returns are handled entirely by destination retailers (such as Meesho and other partner merchants), DevTosh Superbazaar does not have access to customer orders or tracking numbers. For returns, refunds, or delivery inquiries, please contact the retailer directly using the order confirmation received in your email or SMS.
           </p>
         </div>
 
@@ -2015,7 +2114,7 @@ function renderFaqView() {
     },
     {
       q: 'How does shopping through DevTosh Superbazaar work?',
-      a: 'We review and curate products from merchant inventories across trusted platforms like Meesho, Amazon, and Flipkart. When you find an item you like and click "Shop at Retailer", you are redirected to the official seller store to complete your purchase safely.'
+      a: 'We review and curate products from merchant inventories across participating platforms like Meesho and partner retailers. When you find an item you like and click "Shop at Retailer", you are redirected to the official seller store to complete your purchase safely.'
     },
     {
       q: 'Are payments made directly to DevTosh Superbazaar?',
@@ -2068,28 +2167,33 @@ function renderAffiliateDisclosureView() {
       <section class="w pgs">
         ${renderBreadcrumb([['Home', '/'], ['Affiliate Disclosure']])}
         <div class="tt">
-          <h1 class="f" tabindex="-1">Affiliate Disclosure</h1>
+          <h1 class="f" tabindex="-1">Affiliate Disclosure & Transparency</h1>
         </div>
         <div style="margin-top:24px;line-height:1.65;color:var(--tx)">
-          <div class="adm-card" style="border-left:3px solid var(--wn)">
-            <p style="margin:0;font-size:14.5px">
-              <b>Transparency Statement:</b> DevTosh Superbazaar is an independent fashion curation platform. In accordance with FTC guidelines and international advertising disclosure standards, we believe in complete transparency regarding commercial relationships.
+          <div class="adm-card" style="border-left:4px solid var(--wn)">
+            <p style="margin:0;font-size:14.5px;line-height:1.6">
+              <b>Transparency Statement:</b> DevTosh Superbazaar is an independent online product discovery catalogue. In accordance with the Advertising Standards Council of India (ASCI) Guidelines for Influencer and Affiliate Advertising and international FTC disclosure practices, we disclose commercial partnerships and referral relationships with complete transparency.
             </p>
           </div>
 
-          <h2 class="f" style="font-size:20px;margin:28px 0 12px;color:var(--dp)">How Affiliate Relationships Work</h2>
+          <h2 class="f" style="font-size:20px;margin:28px 0 12px;color:var(--dp)">How Affiliate Partnerships Work</h2>
           <p class="mu">
-            DevTosh Superbazaar may earn an affiliate commission when visitors click on partner retailer links and make qualifying purchases on third-party merchant websites. This commission comes at no additional cost to you—the retail price you pay remains exactly the same as visiting the retailer directly.
+            DevTosh Superbazaar features curated product links directing users to third-party e-commerce platforms (including Meesho and other participating online retail marketplaces). We participate in affiliate marketing programs where qualifying purchases made via outbound links may earn our platform a referral commission.
+          </p>
+
+          <h2 class="f" style="font-size:20px;margin:28px 0 12px;color:var(--dp)">No Extra Cost to Shoppers</h2>
+          <p class="mu">
+            This affiliate commission is paid entirely by the partner merchant from their advertising budget. It never increases the price you pay. You receive standard retail pricing, including all seller coupons, marketplace sales, and promotional offers available directly on the merchant platform.
           </p>
 
           <h2 class="f" style="font-size:20px;margin:28px 0 12px;color:var(--dp)">Editorial Independence</h2>
           <p class="mu">
-            Our curation team selects garments and accessories based purely on design merits, fabric quality, and aesthetic value. An affiliate partnership never dictates product placement or positive reviews. If a merchant has great pieces, we feature them; if an item doesn't meet our standards, we don't.
+            Our curation team selects items based on product craftsmanship, material quality, authentic user reviews, and value for money. We do not accept sponsored placements that compromise our editorial integrity. If an item fails to meet our curation standards, it is not featured in our catalogue.
           </p>
 
-          <h2 class="f" style="font-size:20px;margin:28px 0 12px;color:var(--dp)">Affiliate Transparency</h2>
+          <h2 class="f" style="font-size:20px;margin:28px 0 12px;color:var(--dp)">Merchant Terms & Pricing Disclaimer</h2>
           <p class="mu">
-            When clicking outbound product links to partner retailers, you are directed to the merchant’s storefront where pricing and availability are verified in real time.
+            Product availability, pricing, shipping fees, exchange policies, and stock levels are controlled exclusively by third-party retailers and may change without notice. Always verify final pricing and terms on the retailer's checkout page before completing a purchase.
           </p>
 
           <p style="margin-top:32px">
@@ -2112,19 +2216,40 @@ function renderPrivacyView() {
           <h1 class="f" tabindex="-1">Privacy Policy</h1>
         </div>
         <div style="margin-top:24px;line-height:1.65;color:var(--tx)">
-          <h2 class="f" style="font-size:20px;margin:20px 0 10px;color:var(--dp)">Guest-First Architecture</h2>
+          <div class="adm-card" style="border-left:4px solid var(--wn)">
+            <p style="margin:0;font-size:14px;line-height:1.6">
+              <b>Commitment to Privacy:</b> DevTosh Superbazaar is designed on a guest-first, data-minimization architecture. We strive to align our data handling with the principles of the Digital Personal Data Protection Act, 2023 (DPDP Act, 2023) of India by collecting only the technical data strictly necessary to deliver the website. As an open discovery catalog, we do not require account registration or collect personal banking details from consumers.
+            </p>
+          </div>
+
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">1. Guest Browsing & No Forced Accounts</h2>
           <p class="mu">
-            DevTosh Superbazaar operates on a strict privacy-first principle. Customers are not required to create accounts, submit email addresses, or log in to browse products or save favourites.
+            Visitors are not required to create accounts, provide passwords, or submit names, phone numbers, or payment credentials to browse our collections or read our editorial guides.
           </p>
 
-          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">Local Storage for Guest Wishlist</h2>
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">2. Local Storage for Saved Items (Wishlist)</h2>
           <p class="mu">
-            When you click the heart icon on any product, your preference is saved locally on your device using HTML5 <code>localStorage</code>. This data never leaves your browser, is never shared with third parties, and can be cleared at any time directly through your browser settings.
+            When you click the heart icon to save products, your preferences are stored strictly on your device using standard HTML5 <code>localStorage</code>. This data never leaves your device, is never transmitted to our servers or third parties, and can be deleted at any time by clearing your browser cache.
           </p>
 
-          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">Administrator Authentication</h2>
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">3. Website Traffic Analytics</h2>
           <p class="mu">
-            Administrator logins are securely handled using Firebase Authentication and restricted via Cloud Firestore security rules. No customer passwords or financial details are stored on our servers.
+            We use Google Analytics 4 (GA4 measurement ID: <code>G-9SSN7RQ6V1</code>) to track aggregated, non-personally identifiable metrics (such as page views, general device type, browser, and approximate geographic region). This aggregated data helps us understand catalog performance and popular categories. You may block analytics scripts at any time using your browser's tracking protection or content blocking tools.
+          </p>
+
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">4. Cloud Firestore & Administrator Data</h2>
+          <p class="mu">
+            Cloud Firestore stores public catalog documents (products, categories, and editorial articles). Administrative access is restricted to verified administrators via Firebase Authentication. No customer financial, banking, or payment data is ever processed or stored in our database.
+          </p>
+
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">5. Third-Party Retailer Links</h2>
+          <p class="mu">
+            Clicking outbound merchant links (such as to Meesho or other partner retailers) navigates you away from DevTosh Superbazaar. Those independent platforms operate under their own privacy policies, cookie policies, and data processing practices. We encourage you to review their policies upon visiting.
+          </p>
+
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">6. Direct Communications & Grievance Redressal</h2>
+          <p class="mu">
+            If you contact us directly via email at <a href="mailto:devtoshsuperbazaar@gmail.com" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar@gmail.com</a>, your email address and message content are used solely to reply to your inquiry. For privacy inquiries or data concerns, contact our editorial team at the same email address.
           </p>
 
           <p style="margin-top:32px">
@@ -2148,17 +2273,32 @@ function renderTermsView() {
         </div>
         <div style="margin-top:24px;line-height:1.65;color:var(--tx)">
           <p class="mu">
-            Welcome to DevTosh Superbazaar. By accessing or using this website, you agree to comply with and be bound by the following terms and conditions.
+            Welcome to DevTosh Superbazaar. By accessing or using this website, you agree to comply with and be bound by the following Terms of Use. If you do not agree to these terms, please do not use the website.
           </p>
 
-          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">Catalogue & Pricing Accuracy</h2>
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">1. Platform Purpose & Scope</h2>
           <p class="mu">
-            Product details, prices, availability, and discounts displayed on DevTosh Superbazaar are provided for informational and discovery purposes. Prices are subject to change by third-party retailers without prior notice. Always verify final pricing on the retailer’s official website before completing a transaction.
+            DevTosh Superbazaar is an independent product discovery catalog and affiliate recommendation platform. DevTosh Superbazaar is not a seller, merchant, manufacturer, or shipping provider. We do not sell products directly, process consumer checkout, or collect customer payments.
           </p>
 
-          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">Third-Party Retailers & Intellectual Property</h2>
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">2. Catalog Accuracy & Pricing Disclaimer</h2>
           <p class="mu">
-            All brand names, trademarks, and retailer logos referenced on this website are the property of their respective owners. DevTosh Superbazaar does not claim ownership of external brand assets.
+            Product details, images, specifications, prices, maximum retail prices (MRP), and promotional discounts are curated for discovery and informational purposes. Third-party retailers frequently modify pricing, stock levels, and promotional discounts without notice. The binding terms and final price are strictly those displayed on the partner retailer's official checkout page at the time of your purchase.
+          </p>
+
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">3. Third-Party Transactions & Merchant Relationships</h2>
+          <p class="mu">
+            When you purchase a product through an external link, your transaction, contract of sale, order fulfillment, shipping, warranty, and return rights exist exclusively between you and the third-party merchant (such as Meesho or the destination retailer). DevTosh Superbazaar bears no liability for damaged goods, delayed delivery, defective merchandise, or customer service disputes arising from merchant orders.
+          </p>
+
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">4. Intellectual Property</h2>
+          <p class="mu">
+            All original editorial text, curated layouts, and brand assets of DevTosh Superbazaar are the property of DevTosh Superbazaar. Brand names, logos, trademarks, and merchant imagery displayed on the platform belong to their respective owners and are referenced under nominative fair use for identification, cataloguing, and commentary.
+          </p>
+
+          <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">5. Governing Law & Jurisdiction</h2>
+          <p class="mu">
+            These Terms of Use shall be governed by and construed in accordance with the laws of the Republic of India. Any disputes arising in connection with the website shall be subject to the applicable jurisdiction of courts in India.
           </p>
 
           <p style="margin-top:32px">
@@ -2261,9 +2401,12 @@ export function view(route: ReturnType<typeof parseRoute>) {
                 col: d.col || '',
                 sizes: Array.isArray(d.sizes) ? d.sizes : [],
                 ret: d.ret || '',
-                retUrl: d.retUrl || '',
-                affUrl: d.affUrl || '',
+                retUrl: d.retUrl || d.retailerProductUrl || d.affUrl || '',
+                affUrl: d.affUrl || d.affiliateUrl || d.retUrl || d.retailerProductUrl || '',
+                affiliateUrl: d.affiliateUrl || '',
+                retailerProductUrl: d.retailerProductUrl || '',
                 imgUrl: d.imgUrl || '',
+                videoUrl: d.videoUrl || '',
                 desc: d.desc || '',
                 published: d.published !== false,
                 featured: !!d.featured,
@@ -2294,9 +2437,6 @@ export function view(route: ReturnType<typeof parseRoute>) {
         if (!art) {
           art = store.articles.find(a => a.id === id || a.slug === id);
         }
-        if (!art) {
-          art = SEED_ARTICLES.find(a => a.id === id || a.slug === id);
-        }
         if (!art && store.adminLoadingArticleId !== id) {
           store.adminLoadingArticleId = id;
           getDoc(doc(db, 'articles', id)).then(snap => {
@@ -2311,7 +2451,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
                 excerpt: d.excerpt || '',
                 content: d.content || '',
                 authorName: d.authorName || 'DevTosh Superbazaar Editorial Team',
-                authorUrl: d.authorUrl,
+                authorUrl: d.authorUrl || '',
                 coverImage: d.coverImage || '',
                 coverImageAlt: d.coverImageAlt || d.coverAlt || d.title || '',
                 category: d.category || 'Shopping Guides',
@@ -2320,10 +2460,10 @@ export function view(route: ReturnType<typeof parseRoute>) {
                 updatedAt: d.updatedAt || new Date().toISOString(),
                 published: !!d.published,
                 noindex: !!d.noindex || !!d.noIndex,
-                canonicalUrl: d.canonicalUrl || d.canonicalOverride,
-                ogTitle: d.ogTitle,
-                ogDesc: d.ogDesc || d.ogDescription,
-                ogImage: d.ogImage,
+                canonicalUrl: d.canonicalUrl || d.canonicalOverride || '',
+                ogTitle: d.ogTitle || '',
+                ogDesc: d.ogDesc || d.ogDescription || '',
+                ogImage: d.ogImage || '',
                 hasAffiliateLinks: d.hasAffiliateLinks !== false && d.affiliateDisclosure !== false,
                 readTimeMinutes: Number(d.readTimeMinutes) || calculateReadTime(d.content || ''),
                 relatedProducts: Array.isArray(d.relatedProducts) ? d.relatedProducts : []
@@ -2349,7 +2489,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
   if (root === 'home' || root === 'all' || root === '') {
     return renderPublicCatalog(
       'Curated Catalogue',
-      'Discover handpicked fashion, footwear, smartphones, mobile holders, and lifestyle essentials curated by DevTosh Superbazaar.',
+      'Browse handpicked fashion, phones, footwear, and home finds from verified online stores.',
       store.products,
       'all'
     );
@@ -2451,7 +2591,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
   }
 
   if (root === 'product' && sub) {
-    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub) || DEMO_PRODUCTS.find(p => p.slug === sub);
+    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub);
     if (prod) return renderProductDetail(prod);
 
     // If public products from Cloud Firestore have not finished loading yet,
@@ -2464,7 +2604,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
   }
 
   if (root === 'go' && sub) {
-    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub) || DEMO_PRODUCTS.find(p => p.slug === sub);
+    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub);
     if (prod) {
       const destination = prod.affUrl || prod.retUrl;
       return {
@@ -2498,11 +2638,10 @@ export function view(route: ReturnType<typeof parseRoute>) {
   }
 
   if (root === 'blog') {
-    const allArticles = store.articles.length > 0 ? store.articles : SEED_ARTICLES.filter(a => a.published);
+    const allArticles = store.articles;
     if (sub) {
       const art = allArticles.find(a => a.slug === sub || a.id === sub) ||
-        (store.isAdmin ? store.adminArticles.find(a => a.slug === sub || a.id === sub) : undefined) ||
-        SEED_ARTICLES.find(a => a.slug === sub || a.id === sub);
+        (store.isAdmin ? store.adminArticles.find(a => a.slug === sub || a.id === sub) : undefined);
       if (art) {
         return renderArticleDetail(art.slug, allArticles, store.isAdmin);
       }
@@ -2954,6 +3093,7 @@ document.addEventListener('click', async (e) => {
     const coverAltInput = document.getElementById('art-cover-alt') as HTMLInputElement | null;
     const tagsInput = document.getElementById('art-tags') as HTMLInputElement | null;
     const authorInput = document.getElementById('art-author') as HTMLInputElement | null;
+    const authorUrlInput = document.getElementById('art-author-url') as HTMLInputElement | null;
 
     if (parsed.title && titleInput) {
       titleInput.value = parsed.title;
@@ -2998,6 +3138,10 @@ document.addEventListener('click', async (e) => {
     if (parsed.authorName && authorInput) {
       authorInput.value = parsed.authorName;
       updatedFields.push('Author');
+    }
+    if (parsed.authorUrl && authorUrlInput) {
+      authorUrlInput.value = parsed.authorUrl;
+      updatedFields.push('Author URL');
     }
     if (parsed.hasFrontmatter && contentArea) {
       contentArea.value = parsed.content;
@@ -3537,6 +3681,7 @@ document.addEventListener('change', (e) => {
       const coverAltInput = document.getElementById('art-cover-alt') as HTMLInputElement | null;
       const tagsInput = document.getElementById('art-tags') as HTMLInputElement | null;
       const authorInput = document.getElementById('art-author') as HTMLInputElement | null;
+      const authorUrlInput = document.getElementById('art-author-url') as HTMLInputElement | null;
       const contentArea = document.getElementById('art-content') as HTMLTextAreaElement | null;
 
       if (parsed.title && titleInput) {
@@ -3595,6 +3740,11 @@ document.addEventListener('change', (e) => {
       if (parsed.authorName && authorInput) {
         authorInput.value = parsed.authorName;
         updatedFields.push('Author');
+      }
+
+      if (parsed.authorUrl && authorUrlInput) {
+        authorUrlInput.value = parsed.authorUrl;
+        updatedFields.push('Author URL');
       }
 
       if (contentArea) {
@@ -3780,14 +3930,23 @@ document.addEventListener('submit', async (e) => {
     const desc = (document.getElementById('p-desc') as HTMLTextAreaElement).value.trim();
     const imgUrl = (document.getElementById('p-img') as HTMLInputElement).value.trim();
     const ret = (document.getElementById('p-ret') as HTMLInputElement).value.trim();
-    const retUrl = (document.getElementById('p-returl') as HTMLInputElement).value.trim();
     const affUrl = (document.getElementById('p-affurl') as HTMLInputElement).value.trim();
+    const retUrl = ((document.getElementById('p-returl') as HTMLInputElement)?.value || '').trim() || affUrl;
+    const videoUrl = ((document.getElementById('p-videourl') as HTMLInputElement)?.value || '').trim();
     const published = (document.getElementById('p-published') as HTMLInputElement).checked;
     const featured = (document.getElementById('p-featured') as HTMLInputElement).checked;
 
+    if (!affUrl) {
+      alert('Shopping Link (Affiliate URL) is required.');
+      return;
+    }
+
     const id = existingId || `${slug}-${Date.now().toString(36)}`;
+    const existingProd = existingId ? store.adminProducts.find(item => item.id === existingId) : null;
 
     const prodPayload: Partial<Product> = {
+      ...(existingProd?.retailerProductUrl ? { retailerProductUrl: existingProd.retailerProductUrl } : {}),
+      ...(existingProd?.affiliateUrl ? { affiliateUrl: existingProd.affiliateUrl } : {}),
       name,
       slug,
       brand,
@@ -3799,6 +3958,7 @@ document.addEventListener('submit', async (e) => {
       sizes,
       desc,
       imgUrl,
+      videoUrl,
       ret,
       retUrl,
       affUrl,
@@ -3868,7 +4028,7 @@ document.addEventListener('submit', async (e) => {
     const excerpt = (document.getElementById('art-excerpt') as HTMLTextAreaElement)?.value.trim() || '';
     const content = (document.getElementById('art-content') as HTMLTextAreaElement)?.value.trim() || '';
     const authorName = (document.getElementById('art-author') as HTMLInputElement)?.value.trim() || 'DevTosh Superbazaar Editorial Team';
-    const authorUrl = (document.getElementById('art-author-url') as HTMLInputElement)?.value.trim() || undefined;
+    const authorUrl = (document.getElementById('art-author-url') as HTMLInputElement)?.value.trim() || '';
     const coverImage = (document.getElementById('art-cover') as HTMLInputElement)?.value.trim() || '';
     const coverAlt = (document.getElementById('art-cover-alt') as HTMLInputElement)?.value.trim() || title;
     const category = (document.getElementById('art-category') as HTMLInputElement)?.value.trim() || 'Shopping Guides';
@@ -3876,10 +4036,10 @@ document.addEventListener('submit', async (e) => {
     const statusRadio = document.querySelector('input[name="art-status-radio"]:checked') as HTMLInputElement | null;
     const published = statusRadio ? statusRadio.value === 'published' : true;
     const noIndex = (document.getElementById('art-noindex') as HTMLInputElement)?.checked ?? false;
-    const canonicalOverride = (document.getElementById('art-canonical') as HTMLInputElement)?.value.trim() || undefined;
-    const ogTitle = (document.getElementById('art-og-title') as HTMLInputElement)?.value.trim() || undefined;
-    const ogDescription = (document.getElementById('art-og-desc') as HTMLTextAreaElement)?.value.trim() || undefined;
-    const ogImage = (document.getElementById('art-og-img') as HTMLInputElement)?.value.trim() || undefined;
+    const canonicalOverride = (document.getElementById('art-canonical') as HTMLInputElement)?.value.trim() || '';
+    const ogTitle = (document.getElementById('art-og-title') as HTMLInputElement)?.value.trim() || '';
+    const ogDescription = (document.getElementById('art-og-desc') as HTMLTextAreaElement)?.value.trim() || '';
+    const ogImage = (document.getElementById('art-og-img') as HTMLInputElement)?.value.trim() || '';
     const affiliateDisclosure = (document.getElementById('art-aff-disclosure') as HTMLInputElement)?.checked ?? true;
 
     const checkedBoxes = Array.from(document.querySelectorAll('.art-rel-prod-cb:checked')) as HTMLInputElement[];
@@ -3953,6 +4113,13 @@ document.addEventListener('submit', async (e) => {
       saveObj.createdAt = now;
     }
 
+    // Safeguard: Ensure no undefined values exist in Firestore payload
+    Object.keys(saveObj).forEach(key => {
+      if (saveObj[key] === undefined) {
+        delete saveObj[key];
+      }
+    });
+
     try {
       const submitBtn = document.getElementById('art-submit-btn') as HTMLButtonElement;
       if (submitBtn) {
@@ -3987,14 +4154,21 @@ document.addEventListener('click', async (e) => {
     const urlInput = document.getElementById('import-url') as HTMLInputElement;
     const textInput = document.getElementById('import-text') as HTMLTextAreaElement;
     const statusDiv = document.getElementById('import-status');
+    const stageBContainer = document.getElementById('stage-b-container');
     const urlStr = urlInput?.value.trim() || '';
     const textStr = textInput?.value.trim() || '';
 
     if (!urlStr && !textStr) {
       if (statusDiv) {
-        statusDiv.innerHTML = '<span style="color:#C62828;font-weight:600">Please paste a Meesho / retailer link or specifications text first.</span>';
+        statusDiv.innerHTML = '<span style="color:#C62828;font-weight:600">Please paste a shopping link or product specifications text first.</span>';
       }
       return;
+    }
+
+    // Step 1: Immediately preserve the complete original URL in the Shopping Link field
+    const affUrlInput = document.getElementById('p-affurl') as HTMLInputElement;
+    if (affUrlInput && urlStr) {
+      affUrlInput.value = urlStr;
     }
 
     const btn = target as HTMLButtonElement;
@@ -4002,12 +4176,33 @@ document.addEventListener('click', async (e) => {
     btn.disabled = true;
     btn.textContent = 'Extracting product data…';
     if (statusDiv) {
-      statusDiv.innerHTML = '<span style="color:#5E35B1;font-weight:600">⚡ Extracting from Meesho &amp; analyzing metadata…</span>';
+      statusDiv.innerHTML = '<span style="color:#5E35B1;font-weight:600">⚡ Analyzing shopping link &amp; extracting metadata…</span>';
     }
 
     try {
-      const extracted = await extractProductDetails(urlStr, textStr);
+      const extracted = await extractProductDetails(urlStr, textStr, false);
 
+      // If resolution failed or direct product URL is required (Stage B)
+      if (extracted.requiresDirectUrl) {
+        if (stageBContainer) stageBContainer.style.display = 'block';
+        const directInput = document.getElementById('direct-extract-url') as HTMLInputElement;
+        if (directInput && extracted.resolvedDestination && !directInput.value) {
+          directInput.value = extracted.resolvedDestination;
+        }
+
+        if (statusDiv) {
+          statusDiv.innerHTML = `
+            <div style="background:#FFF3E0;border:1px solid #FFE082;padding:10px 14px;border-radius:4px;color:#E65100;margin-top:6px">
+              <strong>✓ Shopping Link Preserved:</strong> We saved your original affiliate link in the <em>Shopping Link (Affiliate URL)</em> field.<br />
+              <span style="font-size:12px">We couldn't automatically access the product page through this affiliate link. Please paste the direct product URL in Stage B below to extract product metadata.</span>
+            </div>
+          `;
+        }
+      } else {
+        if (stageBContainer) stageBContainer.style.display = 'none';
+      }
+
+      // Populate whatever fields could be reliably determined (no fabricated defaults)
       const nameInput = document.getElementById('p-name') as HTMLInputElement;
       const slugInput = document.getElementById('p-slug') as HTMLInputElement;
       const brandInput = document.getElementById('p-brand') as HTMLInputElement;
@@ -4025,8 +4220,8 @@ document.addEventListener('click', async (e) => {
       if (slugInput && extracted.slug) slugInput.value = extracted.slug;
       if (brandInput && extracted.brand) brandInput.value = extracted.brand;
       if (catInput && extracted.cat) catInput.value = extracted.cat;
-      if (priceInput && extracted.price) priceInput.value = String(extracted.price);
-      if (mrpInput && extracted.mrp) mrpInput.value = String(extracted.mrp);
+      if (priceInput && extracted.price > 0) priceInput.value = String(extracted.price);
+      if (mrpInput && extracted.mrp && extracted.mrp > 0) mrpInput.value = String(extracted.mrp);
       if (colInput && extracted.col) colInput.value = extracted.col;
       if (sizesInput && extracted.sizes && extracted.sizes.length) sizesInput.value = extracted.sizes.join(', ');
       if (descInput && extracted.desc) descInput.value = extracted.desc;
@@ -4042,15 +4237,15 @@ document.addEventListener('click', async (e) => {
       priceInput?.dispatchEvent(new Event('input'));
 
       const fieldsCount = [
-        extracted.name, extracted.price, extracted.mrp, extracted.cat,
-        extracted.col, extracted.sizes?.length, extracted.imgUrl, extracted.ret
+        extracted.name, extracted.price > 0 ? extracted.price : null, extracted.mrp && extracted.mrp > 0 ? extracted.mrp : null,
+        extracted.cat, extracted.col, extracted.sizes?.length, extracted.imgUrl, extracted.ret
       ].filter(Boolean).length;
 
-      if (statusDiv) {
+      if (statusDiv && !extracted.requiresDirectUrl) {
         statusDiv.innerHTML = `
           <div style="background:#E8F5E9;border:1px solid #A5D6A7;padding:10px 14px;border-radius:4px;color:#1B5E20;margin-top:6px">
             <strong>✓ Successfully Extracted (${fieldsCount} fields populated)!</strong><br />
-            <span style="font-size:11.5px">Title, ${extracted.price ? `Price (₹${extracted.price}), ` : ''}Category (${esc(extracted.cat)}), and Retailer (${esc(extracted.ret)}) auto-filled. Review values below and click "Save Changes" or "Create &amp; Publish".</span>
+            <span style="font-size:11.5px">Title, ${extracted.price > 0 ? `Price (₹${extracted.price}), ` : ''}Category (${esc(extracted.cat)}), and Retailer (${esc(extracted.ret)}) auto-filled. Original affiliate link is preserved as the customer shopping destination.</span>
           </div>
         `;
       }
@@ -4058,6 +4253,80 @@ document.addEventListener('click', async (e) => {
     } catch (err: any) {
       if (statusDiv) {
         statusDiv.innerHTML = `<span style="color:#C62828">Extraction error: ${esc(err?.message || 'Check link')}</span>`;
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
+  }
+
+  // Stage B: Direct Product URL extraction handler
+  if (target.id === 'direct-extract-btn') {
+    const directInput = document.getElementById('direct-extract-url') as HTMLInputElement;
+    const directStatusDiv = document.getElementById('direct-extract-status');
+    const textInput = document.getElementById('import-text') as HTMLTextAreaElement;
+    const directUrlStr = directInput?.value.trim() || '';
+    const textStr = textInput?.value.trim() || '';
+
+    if (!directUrlStr) {
+      if (directStatusDiv) {
+        directStatusDiv.innerHTML = '<span style="color:#C62828;font-weight:600">Please paste a direct retailer product page URL first.</span>';
+      }
+      return;
+    }
+
+    const btn = target as HTMLButtonElement;
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Extracting from direct page…';
+
+    try {
+      // Stage B extraction: use direct URL ONLY to extract product information
+      const extracted = await extractProductDetails(directUrlStr, textStr, true);
+
+      const nameInput = document.getElementById('p-name') as HTMLInputElement;
+      const slugInput = document.getElementById('p-slug') as HTMLInputElement;
+      const brandInput = document.getElementById('p-brand') as HTMLInputElement;
+      const catInput = document.getElementById('p-cat') as HTMLInputElement;
+      const priceInput = document.getElementById('p-price') as HTMLInputElement;
+      const mrpInput = document.getElementById('p-mrp') as HTMLInputElement;
+      const colInput = document.getElementById('p-col') as HTMLInputElement;
+      const sizesInput = document.getElementById('p-sizes') as HTMLInputElement;
+      const descInput = document.getElementById('p-desc') as HTMLTextAreaElement;
+      const imgInput = document.getElementById('p-img') as HTMLInputElement;
+      const retInput = document.getElementById('p-ret') as HTMLInputElement;
+
+      if (nameInput && extracted.name) nameInput.value = extracted.name;
+      if (slugInput && extracted.slug) slugInput.value = extracted.slug;
+      if (brandInput && extracted.brand) brandInput.value = extracted.brand;
+      if (catInput && extracted.cat) catInput.value = extracted.cat;
+      if (priceInput && extracted.price > 0) priceInput.value = String(extracted.price);
+      if (mrpInput && extracted.mrp && extracted.mrp > 0) mrpInput.value = String(extracted.mrp);
+      if (colInput && extracted.col) colInput.value = extracted.col;
+      if (sizesInput && extracted.sizes && extracted.sizes.length) sizesInput.value = extracted.sizes.join(', ');
+      if (descInput && extracted.desc) descInput.value = extracted.desc;
+      if (retInput && extracted.ret) retInput.value = extracted.ret;
+
+      if (imgInput && extracted.imgUrl) {
+        imgInput.value = extracted.imgUrl;
+        imgInput.dispatchEvent(new Event('input'));
+      }
+
+      priceInput?.dispatchEvent(new Event('input'));
+
+      // CRITICAL: The Direct Product URL must NEVER overwrite the Shopping Link field (#p-affurl)
+      if (directStatusDiv) {
+        directStatusDiv.innerHTML = `
+          <div style="background:#E8F5E9;border:1px solid #A5D6A7;padding:10px 14px;border-radius:4px;color:#1B5E20;margin-top:6px">
+            <strong>✓ Extracted from Direct Product Page!</strong><br />
+            <span style="font-size:11.5px">Product details auto-filled. Your original affiliate link remains safely preserved in <em>Shopping Link (Affiliate URL)</em> as the customer destination. Review details below and click Save.</span>
+          </div>
+        `;
+      }
+      announce('Product information extracted from direct product page');
+    } catch (err: any) {
+      if (directStatusDiv) {
+        directStatusDiv.innerHTML = `<span style="color:#C62828">Direct extraction error: ${esc(err?.message || 'Check link')}</span>`;
       }
     } finally {
       btn.disabled = false;
