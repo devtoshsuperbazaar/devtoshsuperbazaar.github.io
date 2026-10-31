@@ -86,18 +86,32 @@ export default defineConfig(() => {
                       const isMyntra = parsed.hostname.includes('myntra');
                       const isAjio = parsed.hostname.includes('ajio');
 
+                      let fetchTarget = url.trim();
+                      let isAffiliateInvite = false;
+                      let extId = '';
+                      let pId = '';
+
                       if (isMeesho) {
                         product.ret = 'Meesho';
-                        product.retUrl = parsed.origin + parsed.pathname;
-                        product.brand = product.brand || 'Meesho Collection';
-
-                        const m = parsed.pathname.match(/\/([^/]+)\/p\/([a-zA-Z0-9_-]+)/);
-                        if (m && m[1] !== 's' && m[1] !== 'products') {
-                          if (!product.name) {
-                            product.name = m[1].replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
+                        product.brand = product.brand || 'Meesho';
+                        if (parsed.pathname.includes('/af_invite')) {
+                          isAffiliateInvite = true;
+                          extId = parsed.searchParams.get('ext_id') || '';
+                          pId = parsed.searchParams.get('p_id') || parsed.searchParams.get('product_id') || '';
+                          if (extId) {
+                            fetchTarget = `https://www.meesho.com/s/p/${extId}`;
+                            product.retUrl = fetchTarget;
                           }
-                          if (!product.slug) {
-                            product.slug = m[1].toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                        } else {
+                          product.retUrl = parsed.origin + parsed.pathname;
+                          const m = parsed.pathname.match(/\/([^/]+)\/p\/([a-zA-Z0-9_-]+)/);
+                          if (m && m[1] !== 's' && m[1] !== 'products') {
+                            if (!product.name) {
+                              product.name = m[1].replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
+                            }
+                            if (!product.slug) {
+                              product.slug = m[1].toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                            }
                           }
                         }
                       } else if (isAmazon) {
@@ -105,6 +119,7 @@ export default defineConfig(() => {
                         product.brand = product.brand || 'Amazon Partner';
                         const asinMatch = parsed.pathname.match(/\/(?:dp|gp\/product)\/([a-zA-Z0-9]{10})/i);
                         product.retUrl = asinMatch ? `https://www.amazon.in/dp/${asinMatch[1]}` : (parsed.origin + parsed.pathname);
+                        fetchTarget = product.retUrl;
                         const slugMatch = parsed.pathname.match(/\/([^/]+)\/(?:dp|gp\/product)/i);
                         if (slugMatch && slugMatch[1] && slugMatch[1] !== 'gp' && slugMatch[1] !== 'dp') {
                           if (!product.name) product.name = slugMatch[1].replace(/[-_+]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
@@ -113,6 +128,7 @@ export default defineConfig(() => {
                         product.ret = 'Flipkart';
                         product.brand = product.brand || 'Flipkart Choice';
                         product.retUrl = parsed.origin + parsed.pathname;
+                        fetchTarget = product.retUrl;
                         const m = parsed.pathname.match(/\/([^/]+)\/p\//i);
                         if (m && m[1]) {
                           if (!product.name) product.name = m[1].replace(/[-_+]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
@@ -121,6 +137,7 @@ export default defineConfig(() => {
                         product.ret = 'Myntra';
                         product.brand = product.brand || 'Myntra Fashion';
                         product.retUrl = parsed.origin + parsed.pathname;
+                        fetchTarget = product.retUrl;
                         const segs = parsed.pathname.split('/').filter(Boolean);
                         if (segs.length >= 2 && !product.name) {
                           product.name = segs[segs.length - 2].replace(/[-_+]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
@@ -129,6 +146,7 @@ export default defineConfig(() => {
                         product.ret = 'Ajio';
                         product.brand = product.brand || 'Ajio Collection';
                         product.retUrl = parsed.origin + parsed.pathname;
+                        fetchTarget = product.retUrl;
                         const m = parsed.pathname.match(/\/([^/]+)\/p\//i);
                         if (m && m[1] && !product.name) {
                           product.name = m[1].replace(/[-_+]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
@@ -142,8 +160,9 @@ export default defineConfig(() => {
                       // Attempt to fetch page HTML
                       const controller = new AbortController();
                       const timeout = setTimeout(() => controller.abort(), 4000);
+                      let fetchSuccess = false;
                       try {
-                        const response = await fetch(url.trim(), {
+                        const response = await fetch(fetchTarget, {
                           signal: controller.signal,
                           headers: {
                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -154,6 +173,7 @@ export default defineConfig(() => {
                         clearTimeout(timeout);
 
                         if (response.ok) {
+                          fetchSuccess = true;
                           const html = await response.text();
 
                           // Extract og:title
@@ -200,7 +220,20 @@ export default defineConfig(() => {
                         }
                       } catch (fetchErr) {
                         clearTimeout(timeout);
-                        // Handled by client heuristics
+                      }
+
+                      // If this is an affiliate invite link and we could not extract product details from the target
+                      if (isAffiliateInvite && !fetchSuccess && !product.name) {
+                        res.setHeader('Content-Type', 'application/json');
+                        res.end(JSON.stringify({
+                          success: false,
+                          requiresDirectUrl: true,
+                          message: "We couldn't automatically access the product page through this affiliate link. Please paste the direct product URL so we can extract the product information. Your affiliate link will remain saved as the customer shopping link.",
+                          retailer: 'Meesho',
+                          extId,
+                          pId
+                        }));
+                        return;
                       }
                     } catch (_) {}
                   }
