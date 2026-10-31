@@ -69,17 +69,29 @@ for (const u of urls) {
 }
 console.log('[✓] All URLs strictly follow origin and trailing slash format');
 
-// 5. Exclusions Check (noindex / private routes)
-const forbiddenSubstrings = ['/wishlist/', '/404', '/admin', '/go/', 'undefined'];
+// 5. Exclusions Check (noindex / private routes & demo content)
+const forbiddenSubstrings = [
+  '/wishlist/',
+  '/404',
+  '/admin',
+  '/go/',
+  'undefined',
+  'banarasi-soft-silk-zari-woven-saree',
+  '360-rotating-car-dashboard-mobile-holder',
+  'oxford-cotton-slim-fit-casual-shirt',
+  'styling-daily-ethnic-wear-budget-guide',
+  'smart-meesho-shopping-guide-quality-sarees',
+  'top-everyday-accessories-under-500'
+];
 for (const u of urls) {
   for (const forbidden of forbiddenSubstrings) {
     if (u.includes(forbidden)) {
-      console.error(`FAIL: Forbidden or private path present in sitemap: ${u}`);
+      console.error(`FAIL: Forbidden, demo, or private path present in sitemap: ${u}`);
       process.exit(1);
     }
   }
 }
-console.log('[✓] Private/noindex routes (wishlist, admin, 404) properly excluded');
+console.log('[✓] Private/noindex routes and demo content strictly excluded from sitemap');
 
 // 6. 1-to-1 Mapping to On-Disk Static HTML files
 let missingFiles = 0;
