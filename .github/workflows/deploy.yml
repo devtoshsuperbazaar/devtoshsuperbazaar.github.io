@@ -1,4 +1,3 @@
-
 name: Deploy DevtoshSuperBazaar to GitHub Pages
 
 on:
@@ -6,6 +5,8 @@ on:
     branches:
       - main
   workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'  # Runs automatically every 6 hours to sync Firestore changes to GitHub Pages
 
 permissions:
   contents: read
@@ -29,7 +30,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24.12'
+          node-version: 20
 
       - name: Install dependencies
         run: npm install
@@ -39,6 +40,9 @@ jobs:
 
       - name: Verify build integrity and SEO rules
         run: node test/verify.mjs
+
+      - name: Audit sitemap and URL integrity
+        run: node test/sitemap-audit.mjs
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
