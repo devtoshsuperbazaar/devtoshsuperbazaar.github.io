@@ -21,6 +21,11 @@ export interface ExtractedProduct {
   affUrl?: string;
   rawText?: string;
   source: 'meesho' | 'url' | 'text' | 'combined';
+  isAffiliate?: boolean;
+  requiresDirectUrl?: boolean;
+  resolvedDestination?: string;
+  extId?: string;
+  productId?: string;
 }
 
 export function classifyCategory(text: string): string {
@@ -132,11 +137,34 @@ export function parseMeeshoUrl(rawUrl: string): Partial<ExtractedProduct> | null
     if (!u.hostname.includes('meesho')) return null;
 
     const path = u.pathname;
+
+    // 1. Meesho Affiliate Invite Links (e.g. /af_invite/449125188:instagram_stories:15030911?p_id=960507801&ext_id=fvv0k9)
+    if (path.includes('/af_invite')) {
+      const extId = u.searchParams.get('ext_id') || '';
+      const pId = u.searchParams.get('p_id') || u.searchParams.get('product_id') || '';
+      const directUrlGuess = extId ? `https://www.meesho.com/s/p/${extId}` : '';
+      return {
+        name: '',
+        slug: extId ? `meesho-${extId}` : '',
+        brand: 'Meesho',
+        cat: '',
+        ret: 'Meesho',
+        retUrl: directUrlGuess || rawUrl.trim(),
+        affUrl: rawUrl.trim(), // Exact affiliate URL preserved
+        source: 'meesho',
+        isAffiliate: true,
+        extId,
+        productId: pId,
+        resolvedDestination: directUrlGuess,
+        requiresDirectUrl: true
+      };
+    }
+
+    // 2. Direct Meesho Product URLs: /s/p/fvv0k9 or /product-title/p/fvv0k9
     let titleGuess = '';
     let slugGuess = '';
     let productCode = '';
 
-    // Matches: /mens-casual-cotton-shirt/p/4v91ka or /s/p/4v91ka
     const match = path.match(/\/([^/]+)\/p\/([a-zA-Z0-9_-]+)/);
     if (match) {
       slugGuess = match[1];
@@ -148,7 +176,6 @@ export function parseMeeshoUrl(rawUrl: string): Partial<ExtractedProduct> | null
           .trim();
       }
     } else {
-      // General path segment fallback
       const segments = path.split('/').filter(Boolean);
       const last = segments[segments.length - 1] || '';
       if (last && last !== 'p') {
@@ -157,24 +184,20 @@ export function parseMeeshoUrl(rawUrl: string): Partial<ExtractedProduct> | null
       }
     }
 
-    if (!titleGuess) {
-      titleGuess = 'Curated Product';
-    }
-
-    const cat = classifyCategory(titleGuess || slugGuess);
-    const slug = generateProductSlug(titleGuess);
-
-    // Clean affiliate/retailer URL (preserving product code)
-    const retUrl = u.origin + u.pathname;
+    const cat = titleGuess ? classifyCategory(titleGuess) : '';
+    const slug = titleGuess ? generateProductSlug(titleGuess) : '';
 
     return {
       name: titleGuess,
       slug,
-      brand: 'Meesho Collection',
+      brand: 'Meesho',
       cat,
       ret: 'Meesho',
-      retUrl,
-      source: 'meesho'
+      retUrl: u.origin + u.pathname,
+      affUrl: rawUrl.trim(),
+      source: 'meesho',
+      isAffiliate: false,
+      productId: productCode
     };
   } catch {
     return null;
@@ -435,8 +458,13 @@ export function parseProductText(text: string): Partial<ExtractedProduct> {
 /**
  * Intelligent combined extractor that runs client-side,
  * then calls the backend /api/extract-product if available.
+ * Supports Stage A (Affiliate URL) and Stage B (Direct Product URL fallback).
  */
-export async function extractProductDetails(inputUrl: string, inputText: string = ''): Promise<ExtractedProduct> {
+export async function extractProductDetails(
+  inputUrl: string,
+  inputText: string = '',
+  isDirectExtraction: boolean = false
+): Promise<ExtractedProduct> {
   const url = (inputUrl || '').trim();
   const text = (inputText || '').trim();
 
@@ -445,21 +473,26 @@ export async function extractProductDetails(inputUrl: string, inputText: string 
   const textData = text ? parseProductText(text) : {};
 
   let combined: ExtractedProduct = {
-    name: textData.name || urlData.name || 'Curated Product',
-    slug: textData.slug || urlData.slug || generateProductSlug(textData.name || urlData.name || 'curated-product'),
-    brand: textData.brand || urlData.brand || 'Devtosh SuperBazaar Curated',
-    cat: textData.cat || urlData.cat || (urlData.name ? classifyCategory(urlData.name) : 'Accessories & Lifestyle'),
-    price: textData.price || urlData.price || 499,
-    mrp: textData.mrp || urlData.mrp || (textData.price ? Math.round(textData.price * 1.5) : 899),
+    name: textData.name || urlData.name || '',
+    slug: textData.slug || urlData.slug || (textData.name || urlData.name ? generateProductSlug(textData.name || urlData.name!) : ''),
+    brand: textData.brand || urlData.brand || (urlData.ret || ''),
+    cat: textData.cat || urlData.cat || (textData.name || urlData.name ? classifyCategory(textData.name || urlData.name!) : ''),
+    price: textData.price || urlData.price || 0,
+    mrp: textData.mrp || urlData.mrp || 0,
     currency: 'INR',
-    col: textData.col || urlData.col || 'Multicolor',
-    sizes: textData.sizes && textData.sizes.length ? textData.sizes : ['Standard'],
-    desc: textData.desc || urlData.desc || 'Curated affiliate product handpicked for quality and value.',
+    col: textData.col || urlData.col || '',
+    sizes: textData.sizes && textData.sizes.length ? textData.sizes : [],
+    desc: textData.desc || urlData.desc || '',
     imgUrl: textData.imgUrl || urlData.imgUrl || '',
     ret: urlData.ret || 'Partner Retailer',
-    retUrl: url || urlData.retUrl || '',
-    affUrl: '',
-    source: (url && text) ? 'combined' : (url ? 'url' : 'text')
+    retUrl: urlData.retUrl || url || '',
+    affUrl: isDirectExtraction ? '' : url,
+    source: (url && text) ? 'combined' : (url ? 'url' : 'text'),
+    isAffiliate: urlData.isAffiliate || false,
+    requiresDirectUrl: urlData.requiresDirectUrl || false,
+    extId: urlData.extId,
+    productId: urlData.productId,
+    resolvedDestination: urlData.resolvedDestination
   };
 
   // 2. Query backend server proxy endpoint for rich extraction if URL provided
@@ -468,7 +501,7 @@ export async function extractProductDetails(inputUrl: string, inputText: string 
       const resp = await fetch('/api/extract-product', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, text })
+        body: JSON.stringify({ url, text, isDirectExtraction })
       });
       if (resp.ok) {
         const json = await resp.json();
@@ -478,20 +511,38 @@ export async function extractProductDetails(inputUrl: string, inputText: string 
             ...combined,
             ...Object.fromEntries(Object.entries(s).filter(([_, v]) => v !== undefined && v !== null && v !== ''))
           };
+          if (json.resolvedUrl) {
+            combined.resolvedDestination = json.resolvedUrl;
+          }
+          combined.requiresDirectUrl = false;
+        } else if (json && json.requiresDirectUrl) {
+          combined.requiresDirectUrl = true;
+        }
+      } else {
+        if (urlData.isAffiliate && !isDirectExtraction) {
+          combined.requiresDirectUrl = true;
         }
       }
     } catch (e) {
       console.warn('Backend proxy extraction failed, using robust client-side heuristics:', e);
+      if (urlData.isAffiliate && !isDirectExtraction) {
+        combined.requiresDirectUrl = true;
+      }
     }
   }
 
-  // Ensure slug is clean
-  if (!combined.slug || combined.slug === 'item') {
+  // Preserve the original affiliate link if Stage A
+  if (!isDirectExtraction && url) {
+    combined.affUrl = url;
+  }
+
+  // Ensure slug is generated if name is present
+  if (combined.name && (!combined.slug || combined.slug === 'item' || combined.slug === 'product-item')) {
     combined.slug = generateProductSlug(combined.name);
   }
 
-  // Ensure category is classified
-  if (!combined.cat || combined.cat === 'Essentials') {
+  // Ensure category is classified if name is present
+  if (combined.name && !combined.cat) {
     combined.cat = classifyCategory(combined.name);
   }
 
@@ -506,15 +557,16 @@ function parseGenericUrl(rawUrl: string): Partial<ExtractedProduct> {
     const pathSegments = u.pathname.split('/').filter(Boolean);
     const last = pathSegments[pathSegments.length - 1] || 'item';
     const cleanLast = last.replace(/\.html?$/, '').replace(/[-_]/g, ' ');
-    const title = cleanLast.replace(/\b\w/g, c => c.toUpperCase());
-    const cat = classifyCategory(title);
+    const title = cleanLast.length > 2 && cleanLast !== 'item' ? cleanLast.replace(/\b\w/g, c => c.toUpperCase()) : '';
+    const cat = title ? classifyCategory(title) : '';
     return {
       name: title,
-      slug: generateProductSlug(title),
+      slug: title ? generateProductSlug(title) : '',
       brand: retailer,
       cat,
       ret: retailer,
-      retUrl: rawUrl.trim()
+      retUrl: rawUrl.trim(),
+      affUrl: rawUrl.trim()
     };
   } catch {
     return {};
