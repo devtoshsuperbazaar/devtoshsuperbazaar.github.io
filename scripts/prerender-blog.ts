@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
-  DEMO_PRODUCTS,
   Product,
   SITE_CATEGORIES,
   CategoryMeta,
@@ -12,9 +11,10 @@ import {
   isFootwearProduct,
   isElectronicsProduct,
   isAccessoriesProduct,
-  isHomeLivingProduct
+  isHomeLivingProduct,
+  isValidProductVideoUrl
 } from '../src/productData.ts';
-import { SEED_ARTICLES, Article, formatBlogDate, calculateReadTime } from '../src/blogData.ts';
+import { Article, formatBlogDate, calculateReadTime } from '../src/blogData.ts';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import baseConfig from '../firebase-applet-config.json' with { type: 'json' };
@@ -47,9 +47,12 @@ async function fetchLiveProductsFromFirestore(): Promise<Product[]> {
         col: data.col || 'Neutral',
         sizes: Array.isArray(data.sizes) ? data.sizes : (typeof data.sizes === 'string' ? data.sizes.split(',') : ['One size']),
         ret: data.ret || 'Partner Retailer',
-        retUrl: data.retUrl || '',
-        affUrl: data.affUrl || '',
+        retUrl: data.retUrl || data.retailerProductUrl || data.affUrl || '',
+        affUrl: data.affUrl || data.affiliateUrl || data.retUrl || data.retailerProductUrl || '',
+        affiliateUrl: data.affiliateUrl || '',
+        retailerProductUrl: data.retailerProductUrl || '',
         imgUrl: data.imgUrl || '',
+        videoUrl: data.videoUrl || '',
         desc: data.desc || '',
         published: true,
         featured: !!data.featured,
@@ -58,14 +61,57 @@ async function fetchLiveProductsFromFirestore(): Promise<Product[]> {
         isDemo: false
       });
     });
-    if (items.length > 0) {
-      console.log(`[SSG Prerender] Fetched ${items.length} live products from Cloud Firestore for homepage.`);
-      return items;
-    }
+    console.log(`[SSG Prerender] Fetched ${items.length} live products from Cloud Firestore.`);
+    return items;
   } catch (err) {
-    console.warn('[SSG Prerender] Could not connect to Firestore during build, using fallback:', err);
+    console.warn('[SSG Prerender] Could not connect to Firestore for products during build:', err);
   }
   return [];
+}
+
+async function fetchLiveArticlesFromFirestore(): Promise<Article[]> {
+  try {
+    const app = getApps().length > 0 ? getApp() : initializeApp(baseConfig);
+    const db = getFirestore(app);
+    const q = query(collection(db, 'articles'), where('published', '==', true));
+    const snap = await getDocs(q);
+    const items: Article[] = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.noindex) return;
+      items.push({
+        id: d.id,
+        title: data.title || 'Untitled Article',
+        slug: data.slug || d.id,
+        metaTitle: data.metaTitle || data.seoTitle || data.title || '',
+        metaDesc: data.metaDesc || '',
+        excerpt: data.excerpt || '',
+        content: data.content || '',
+        authorName: data.authorName || 'DevTosh Superbazaar Editorial Team',
+        authorUrl: data.authorUrl || '',
+        coverImage: data.coverImage || '',
+        coverImageAlt: data.coverImageAlt || data.coverAlt || data.title || '',
+        category: data.category || 'Shopping Guides',
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        publishedAt: data.publishedAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString(),
+        published: true,
+        noindex: !!data.noindex || !!data.noIndex,
+        canonicalUrl: data.canonicalUrl || data.canonicalOverride || '',
+        ogTitle: data.ogTitle || '',
+        ogDesc: data.ogDesc || data.ogDescription || '',
+        ogImage: data.ogImage || '',
+        hasAffiliateLinks: data.hasAffiliateLinks !== false && data.affiliateDisclosure !== false,
+        readTimeMinutes: Number(data.readTimeMinutes) || calculateReadTime(data.content || ''),
+        relatedProducts: Array.isArray(data.relatedProducts) ? data.relatedProducts : []
+      });
+    });
+    console.log(`[SSG Prerender] Fetched ${items.length} live articles from Cloud Firestore.`);
+    return items;
+  } catch (err) {
+    console.warn('[SSG Prerender] Could not connect to Firestore for articles during build:', err);
+    return [];
+  }
 }
 
 function esc(str: string = ''): string {
@@ -370,7 +416,7 @@ function renderFaqsHtml(
   `;
 }
 
-function renderStaticProductCard(p: Product, isLcp: boolean = false): string {
+function renderStaticProductCard(p: Product, isLcp: boolean = false, isSubordinateHeading: boolean = false): string {
   const u = `/product/${p.slug}/`;
   const d = disc(p);
   const tint = p.tint || '#EADFD8';
@@ -382,22 +428,23 @@ function renderStaticProductCard(p: Product, isLcp: boolean = false): string {
     isAccessoriesProduct(p) ? 'bag' :
     'shirt'
   );
+  const headingTag = isSubordinateHeading ? 'h3' : 'h2';
 
   return `
     <article class="pc" id="card-${p.slug}">
       <a href="${u}" class="ph" style="--t:${tint};--g:${g};background:#fff" aria-label="View product details for ${esc(p.name)}">
         ${p.imgUrl ? `
-          <img src="${esc(p.imgUrl)}" alt="${esc(p.name)}" ${isLcp ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"'} style="width:100%;height:100%;object-fit:cover" />
+          <img src="${esc(p.imgUrl)}" alt="${esc(p.name)}" ${isLcp ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"'} width="400" height="500" style="width:100%;height:100%;object-fit:cover" />
         ` : `
           <svg viewBox="0 0 100 125" role="img" aria-label="Illustration for ${esc(p.name)}"><use href="#${sh}"/></svg>
         `}
       </a>
-      <button class="wl" id="wl-${p.slug}" data-a="wl" data-s="${p.slug}" aria-label="Save ${esc(p.name)} to wishlist">
+      <button class="wl" id="wl-${p.slug}" data-a="wl" data-s="${p.slug}" aria-label="Save ${esc(p.name)} to saved items">
         <svg aria-hidden="true" viewBox="0 0 24 24"><use href="#hrt"/></svg>
       </button>
       <div class="pi">
         <div class="rt">${esc(p.brand)}</div>
-        <h2 class="pn"><a href="${u}">${esc(p.name)}</a></h2>
+        <${headingTag} class="pn"><a href="${u}">${esc(p.name)}</a></${headingTag}>
         <div class="pr">
           <b>${inr(p.price)}</b>
           ${p.mrp && d > 0 ? `<s><span class="sr">MRP </span>${inr(p.mrp)}</s><em>${d}% off</em>` : ''}
@@ -424,7 +471,7 @@ export async function prerender() {
 
   // Track all indexed URLs for universal sitemap.xml
   const sitemapUrls: { loc: string; lastmod?: string; changefreq: string; priority: string }[] = [
-    { loc: `${BASE_ORIGIN}/`, changefreq: 'daily', priority: '1.0' }
+    { loc: `${BASE_ORIGIN}/`, lastmod: new Date().toISOString().split('T')[0], changefreq: 'daily', priority: '1.0' }
   ];
 
   function writeDocument(subPath: string, htmlContent: string) {
@@ -443,7 +490,7 @@ export async function prerender() {
     canonicalUrl: string;
     ogType?: string;
     ogImage?: string;
-    jsonLd?: object;
+    jsonLd?: object | object[];
     mainHtml: string;
     noindex?: boolean;
     faqs?: { q: string; a: string }[];
@@ -477,7 +524,15 @@ export async function prerender() {
           'name': 'DevTosh Superbazaar',
           'url': `${BASE_ORIGIN}/`,
           'logo': `${BASE_ORIGIN}/favicon-48x48.png`,
-          'sameAs': ['https://www.instagram.com/devtoshsuperbazaar/']
+          'sameAs': ['https://www.instagram.com/devtoshsuperbazaar/'],
+          'contactPoint': [
+            {
+              '@type': 'ContactPoint',
+              'contactType': 'customer support',
+              'email': 'devtoshsuperbazaar@gmail.com',
+              'availableLanguage': ['English', 'Hindi']
+            }
+          ]
         },
         {
           '@type': 'WebSite',
@@ -488,9 +543,34 @@ export async function prerender() {
           'publisher': {
             '@id': `${BASE_ORIGIN}/#organization`
           }
-        },
-        options.jsonLd
+        }
       ];
+
+      const inputList = Array.isArray(options.jsonLd) ? options.jsonLd : [options.jsonLd];
+      const hasPageEntity = inputList.some((item: any) =>
+        item && (
+          item['@type'] === 'WebPage' ||
+          item['@type'] === 'CollectionPage' ||
+          item['@type'] === 'ItemPage' ||
+          item['@type'] === 'ContactPage' ||
+          item['@type'] === 'AboutPage'
+        )
+      );
+
+      if (!hasPageEntity) {
+        graphItems.push({
+          '@type': 'WebPage',
+          '@id': `${options.canonicalUrl}#webpage`,
+          'url': options.canonicalUrl,
+          'name': options.title,
+          'description': options.description,
+          'isPartOf': {
+            '@id': `${BASE_ORIGIN}/#website`
+          }
+        });
+      }
+
+      graphItems.push(...inputList);
 
       if (options.faqs && options.faqs.length) {
         graphItems.push({
@@ -533,13 +613,15 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   console.log('[SSG Prerender] Prerendering Homepage (dist/index.html)...');
   const homeFaqs = getCategoryFaqs('home', 'DevTosh Superbazaar');
   const liveProducts = await fetchLiveProductsFromFirestore();
-  const homeFeatured = liveProducts.length > 0 ? liveProducts : DEMO_PRODUCTS.slice(0, 8);
+  const homeFeatured = liveProducts.slice(0, 8);
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const homeMainHtml = `
     <section class="w ih">
       <div class="tt">
         <h1 class="f" tabindex="-1">DevTosh Superbazaar — Curated Fashion, Mobiles &amp; Lifestyle Discovery</h1>
       </div>
-      <p class="lead">Discover handpicked fashion, smartphones, car mobile holders, footwear, and lifestyle essentials curated by DevTosh Superbazaar.</p>
+      <p class="lead">Find top fashion, smartphones, footwear, and everyday essentials. We handpick quality products and verified deals from trusted Indian marketplaces.</p>
     </section>
 
     <div class="w lay">
@@ -549,7 +631,11 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
             <strong>Featured Collections &amp; Handpicked Finds</strong>
           </div>
         </div>
-        <div class="g">${homeFeatured.map((p, idx) => renderStaticProductCard(p, idx === 0)).join('')}</div>
+        <div class="g">${homeFeatured.length > 0 ? homeFeatured.map((p, idx) => renderStaticProductCard(p, idx === 0)).join('') : `
+          <div style="grid-column: 1 / -1; padding: 48px 24px; text-align: center; background: var(--sf); border: 1px dashed var(--bd);">
+            <p style="font-size: 16px; color: var(--mu);">Our curated collections are currently being updated. Please check back shortly!</p>
+          </div>
+        `}</div>
       </div>
     </div>
     ${renderFaqsHtml(homeFaqs, 'DevTosh Superbazaar — Frequently Asked Questions', 'Helpful answers regarding our curation, retailer shopping links, and store operations.', 'home')}
@@ -584,15 +670,15 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   console.log('[SSG Prerender] Prerendering category collection pages...');
   for (const cat of SITE_CATEGORIES) {
     let items: Product[] = [];
-    if (cat.slug === 'women') items = DEMO_PRODUCTS.filter(isWomenProduct);
-    else if (cat.slug === 'men') items = DEMO_PRODUCTS.filter(isMenProduct);
-    else if (cat.slug === 'kids') items = DEMO_PRODUCTS.filter(isKidsProduct);
-    else if (cat.slug === 'footwear') items = DEMO_PRODUCTS.filter(isFootwearProduct);
-    else if (cat.slug === 'mobiles' || cat.slug === 'electronics') items = DEMO_PRODUCTS.filter(isElectronicsProduct);
-    else if (cat.slug === 'accessories') items = DEMO_PRODUCTS.filter(isAccessoriesProduct);
-    else if (cat.slug === 'home-living') items = DEMO_PRODUCTS.filter(isHomeLivingProduct);
-    else if (cat.slug === 'new') items = [...DEMO_PRODUCTS].sort((a, b) => (b.added || 0) - (a.added || 0));
-    else items = DEMO_PRODUCTS;
+    if (cat.slug === 'women') items = liveProducts.filter(isWomenProduct);
+    else if (cat.slug === 'men') items = liveProducts.filter(isMenProduct);
+    else if (cat.slug === 'kids') items = liveProducts.filter(isKidsProduct);
+    else if (cat.slug === 'footwear') items = liveProducts.filter(isFootwearProduct);
+    else if (cat.slug === 'mobiles' || cat.slug === 'electronics') items = liveProducts.filter(isElectronicsProduct);
+    else if (cat.slug === 'accessories') items = liveProducts.filter(isAccessoriesProduct);
+    else if (cat.slug === 'home-living') items = liveProducts.filter(isHomeLivingProduct);
+    else if (cat.slug === 'new') items = [...liveProducts].sort((a, b) => (b.added || 0) - (a.added || 0));
+    else items = liveProducts;
 
     const canonicalUrl = `${BASE_ORIGIN}/category/${cat.slug}/`;
     const catFaqs = getCategoryFaqs(cat.slug, cat.name);
@@ -636,7 +722,11 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
               <strong>${items.length} curated items</strong>
             </div>
           </div>
-          <div class="g">${items.map((p, idx) => renderStaticProductCard(p, idx === 0)).join('')}</div>
+          <div class="g">${items.length > 0 ? items.map((p, idx) => renderStaticProductCard(p, idx === 0)).join('') : `
+            <div style="grid-column: 1 / -1; padding: 48px 24px; text-align: center; background: var(--sf); border: 1px dashed var(--bd);">
+              <p style="font-size: 16px; color: var(--mu);">No curated products in this collection yet. Check back soon!</p>
+            </div>
+          `}</div>
         </div>
       </div>
       ${renderFaqsHtml(catFaqs, `${cat.name} — Questions & Answers`, `Common questions about our ${cat.name.toLowerCase()} curation and shopping advice.`, `cat-${cat.slug}`)}
@@ -655,6 +745,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
     sitemapUrls.push({
       loc: canonicalUrl,
+      lastmod: todayStr,
       changefreq: 'weekly',
       priority: '0.85'
     });
@@ -666,7 +757,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   const allProductsToPrerender: Product[] = [];
   const seenProductSlugs = new Set<string>();
 
-  // Live products from Cloud Firestore take priority
+  // Only live products from Cloud Firestore are prerendered (zero demo fallbacks)
   for (const lp of liveProducts) {
     if (lp.slug && !seenProductSlugs.has(lp.slug)) {
       seenProductSlugs.add(lp.slug);
@@ -674,15 +765,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
     }
   }
 
-  // Demo products supplement catalogue
-  for (const dp of DEMO_PRODUCTS) {
-    if (dp.slug && !seenProductSlugs.has(dp.slug)) {
-      seenProductSlugs.add(dp.slug);
-      allProductsToPrerender.push(dp);
-    }
-  }
-
-  console.log(`[SSG Prerender] Prerendering ${allProductsToPrerender.length} single product pages (${liveProducts.length} live from Firestore + demo catalogue)...`);
+  console.log(`[SSG Prerender] Prerendering ${allProductsToPrerender.length} single product pages from Cloud Firestore...`);
   for (const p of allProductsToPrerender) {
     const canonicalUrl = `${BASE_ORIGIN}/product/${p.slug}/`;
     const pageTitle = `${p.name} — Buy Online at Best Price | DevTosh Superbazaar`;
@@ -728,7 +811,18 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
       }
     ];
 
-    const jsonLd = {
+    const itemPageJsonLd = {
+      '@type': 'ItemPage',
+      '@id': `${canonicalUrl}#itempage`,
+      'url': canonicalUrl,
+      'name': pageTitle,
+      'description': pageDesc,
+      'mainEntity': {
+        '@id': `${canonicalUrl}#product`
+      }
+    };
+
+    const productJsonLd = {
       '@type': 'Product',
       '@id': `${canonicalUrl}#product`,
       'name': p.name,
@@ -760,7 +854,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
         <div class="dt">
           <div class="ph big" style="background:#fff">
             ${p.imgUrl ? `
-              <img src="${esc(p.imgUrl)}" alt="${esc(p.name)}" loading="eager" fetchpriority="high" style="width:100%;height:100%;object-fit:cover" />
+              <img src="${esc(p.imgUrl)}" alt="${esc(p.name)}" loading="eager" fetchpriority="high" width="600" height="750" style="width:100%;height:100%;object-fit:cover" />
             ` : `
               <div style="padding:60px 20px;text-align:center;background:var(--bl);color:var(--dp);font-weight:600">${esc(p.name)}</div>
             `}
@@ -782,10 +876,16 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
               <dt>Product SKU</dt><dd>${esc(p.slug)}</dd>
             </dl>
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:28px">
-              <a class="lm" href="${esc(p.affUrl || p.retUrl || '/')}" target="_blank" rel="noopener noreferrer">Shop at ${esc(p.ret)} ↗</a>
-              <button class="wb" id="wb-${p.slug}" data-a="wl" data-s="${p.slug}" aria-label="Save to wishlist">
+              <a class="lm" href="${esc(p.affUrl || p.affiliateUrl || p.retUrl || p.retailerProductUrl || '/')}" target="_blank" rel="noopener noreferrer">Shop at ${esc(p.ret)} ↗</a>
+              ${isValidProductVideoUrl(p.videoUrl) ? `
+                <a class="vid-btn" href="${esc(p.videoUrl!.trim())}" target="_blank" rel="noopener noreferrer" aria-label="Watch product video for ${esc(p.name)} on Instagram">
+                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+                  <span>Watch Product Video</span>
+                </a>
+              ` : ''}
+              <button class="wb" id="wb-${p.slug}" data-a="wl" data-s="${p.slug}" aria-label="Save to saved items">
                 <svg aria-hidden="true" viewBox="0 0 24 24"><use href="#hrt"/></svg>
-                <span>Save to wishlist</span>
+                <span>Save to saved items</span>
               </button>
             </div>
 
@@ -808,9 +908,9 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
             <p class="dc" style="margin-top:24px"><b>Affiliate disclosure:</b> DevTosh Superbazaar participates in affiliate partnerships and may earn a commission on qualifying purchases made through partner retailer links at no additional cost to you.</p>
           </div>
         </div>
-        <h2 class="f rh">You may also like</h2>
-        <div class="g">${related.map(r => renderStaticProductCard(r, false)).join('')}</div>
-        ${renderFaqsHtml(prodFaqs, `About ${p.name} — FAQs`, 'Answers about materials, fit, care instructions, and retailer ordering.', `prod-${p.slug}`)}
+        <h2 class="f rh">Recommended Similar Finds</h2>
+        <div class="g">${related.map(r => renderStaticProductCard(r, false, true)).join('')}</div>
+        ${renderFaqsHtml(prodFaqs, `Product Details & Ordering FAQs`, 'Answers about materials, fit, care instructions, and retailer ordering.', `prod-${p.slug}`)}
       </section>
     `;
 
@@ -820,15 +920,27 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
       canonicalUrl,
       ogType: 'product',
       ogImage: ogImg,
-      jsonLd,
+      jsonLd: [itemPageJsonLd, productJsonLd],
       faqs: prodFaqs,
       mainHtml
     });
 
     writeDocument(`product/${p.slug}`, prodHtml);
 
+    const lastModDate = p.updatedAt || p.createdAt;
+    let prodLastmodStr: string | undefined = undefined;
+    if (lastModDate) {
+      try {
+        const d = new Date(lastModDate);
+        if (!isNaN(d.getTime())) {
+          prodLastmodStr = d.toISOString().split('T')[0];
+        }
+      } catch {}
+    }
+
     sitemapUrls.push({
       loc: canonicalUrl,
+      lastmod: prodLastmodStr || todayStr,
       changefreq: 'weekly',
       priority: '0.80'
     });
@@ -838,7 +950,8 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   // 4. Prerender Blog Articles (/blog/<slug>/) & Blog Index (/blog/)
   // ========================================================================
   console.log('[SSG Prerender] Prerendering blog articles and index...');
-  const publishedArticles = SEED_ARTICLES.filter(a => a.published && !a.noindex);
+  const liveArticles = await fetchLiveArticlesFromFirestore();
+  const publishedArticles = liveArticles.filter(a => a.published && !a.noindex);
 
   for (const article of publishedArticles) {
     const canonicalUrl = article.canonicalUrl || `${BASE_ORIGIN}/blog/${article.slug}/`;
@@ -917,7 +1030,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
           ${article.coverImage ? `
             <figure class="art-cover-fig">
-              <img class="art-cover-img" src="${esc(article.coverImage)}" alt="${esc(article.coverImageAlt || article.title)}" loading="eager" fetchpriority="high" />
+              <img class="art-cover-img" src="${esc(article.coverImage)}" alt="${esc(article.coverImageAlt || article.title)}" loading="eager" fetchpriority="high" width="920" height="500" />
               ${article.coverImageAlt ? `<figcaption class="art-cover-cap">${esc(article.coverImageAlt)}</figcaption>` : ''}
             </figure>
           ` : ''}
@@ -953,7 +1066,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
     sitemapUrls.push({
       loc: canonicalUrl,
-      lastmod: article.updatedAt ? article.updatedAt.split('T')[0] : article.publishedAt.split('T')[0],
+      lastmod: article.updatedAt ? article.updatedAt.split('T')[0] : (article.publishedAt ? article.publishedAt.split('T')[0] : todayStr),
       changefreq: 'monthly',
       priority: '0.70'
     });
@@ -995,20 +1108,29 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
       </div>
       <p class="lead">${esc(blogIndexDesc)}</p>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px;margin-top:32px">
-        ${publishedArticles.map(a => `
-          <article class="adm-card" style="margin:0;display:flex;flex-direction:column;justify-content:space-between">
-            <div>
-              <span class="tag" style="margin-bottom:8px">${esc(a.category)}</span>
-              <h2 class="f" style="font-size:20px;margin:8px 0"><a href="/blog/${a.slug}/">${esc(a.title)}</a></h2>
-              <p class="mu" style="font-size:13.5px;line-height:1.55;margin:8px 0">${esc(a.excerpt)}</p>
-            </div>
-            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;font-size:12px">
-              <span class="mu">${formatBlogDate(a.publishedAt)}</span>
-              <a class="vp" href="/blog/${a.slug}/">Read article →</a>
-            </div>
-          </article>
-        `).join('')}
+      <div style="margin-top:32px">
+        ${publishedArticles.length > 0 ? `
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px">
+            ${publishedArticles.map(a => `
+              <article class="adm-card" style="margin:0;display:flex;flex-direction:column;justify-content:space-between">
+                <div>
+                  <span class="tag" style="margin-bottom:8px">${esc(a.category)}</span>
+                  <h2 class="f" style="font-size:20px;margin:8px 0"><a href="/blog/${a.slug}/">${esc(a.title)}</a></h2>
+                  <p class="mu" style="font-size:13.5px;line-height:1.55;margin:8px 0">${esc(a.excerpt)}</p>
+                </div>
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;font-size:12px">
+                  <span class="mu">${formatBlogDate(a.publishedAt)}</span>
+                  <a class="vp" href="/blog/${a.slug}/">Read article →</a>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        ` : `
+          <div style="padding:48px 24px;text-align:center;background:var(--sf);border:1px dashed var(--bd)">
+            <p class="lead" style="margin:0 0 8px;font-size:18px;color:var(--dp)">No Articles Published Yet</p>
+            <p class="mu" style="margin:0;font-size:14px">Our editors are preparing practical guides, style tips, and smart shopping comparisons. Check back soon!</p>
+          </div>
+        `}
       </div>
     </section>
   `;
@@ -1024,6 +1146,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   writeDocument('blog', blogIndexHtml);
   sitemapUrls.push({
     loc: blogIndexCanonical,
+    lastmod: todayStr,
     changefreq: 'weekly',
     priority: '0.75'
   });
@@ -1036,55 +1159,103 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
     {
       slug: 'about',
       title: 'About DevTosh Superbazaar',
-      description: 'Learn about Devtosh SuperBazaar, an independent curated online catalog for fashion, electronics, and lifestyle discovery.',
+      description: 'Learn about DevTosh Superbazaar, an independent curated online catalog for fashion, electronics, and lifestyle discovery.',
       heading: 'About DevTosh Superbazaar',
+      schemaType: 'AboutPage',
       body: `
-        <p class="lead">DevTosh Superbazaar is a curated product discovery destination founded by Devsharan Yadav, focused on showcasing top-tier ethnic wear, smart mobile essentials, and everyday lifestyle values from India's vibrant retail marketplaces.</p>
-        <p class="mu" style="margin-top:20px;line-height:1.7">We do not sell counterfeit goods, manufacture apparel, or take customer payments. Instead, our editors browse thousands of listings to surface genuine bargains with dependable merchant reviews, directing you to trusted e-commerce stores.</p>
+        <p class="lead">DevTosh Superbazaar is an independent online product discovery and curation platform operating in India.</p>
+        <p class="mu" style="margin-top:20px;line-height:1.75">Our mission is to help Indian shoppers discover stylish apparel, dependable mobile accessories, comfortable footwear, and trending lifestyle essentials from trusted e-commerce marketplaces (including Meesho and other partner retail merchants). We handpick high-value listings, evaluate verified customer feedback, and provide direct links so you can browse, compare, and purchase directly from reputable sellers.</p>
+        <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
+          <h2 style="font-size:18px;margin:0 0 12px;color:var(--dp)">Independent Editorial Discovery — Not a Seller</h2>
+          <p style="line-height:1.75;margin:0 0 14px">DevTosh Superbazaar is <b>not a retailer, merchant, or manufacturer</b>. We do not stock physical inventory, process transactions, collect payments, or handle shipments and returns. When you click a product link on our catalog, you are securely redirected to the destination partner marketplace where the transaction is completed under that retailer's standard terms, pricing, and buyer protection policies.</p>
+          <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">We are committed to transparent recommendations, guest-first privacy, and adherence to Indian digital commerce disclosures, including the Advertising Standards Council of India (ASCI) guidelines for affiliate and influencer disclosures.</p>
+        </div>
       `
     },
     {
       slug: 'contact',
       title: 'Contact DevTosh Superbazaar',
-      description: 'Get in touch with Devtosh SuperBazaar for catalog suggestions, business collaborations, or general questions.',
+      description: 'Get in touch with DevTosh Superbazaar for catalog suggestions, business collaborations, or general questions.',
       heading: 'Contact DevTosh Superbazaar',
+      schemaType: 'ContactPage',
       body: `
-        <p class="lead">We welcome suggestions, feedback, and merchant partnership inquiries.</p>
-        <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:24px">
-          <h2 style="font-size:18px;margin:0 0 12px;color:var(--dp)">Editorial &amp; Business Office</h2>
-          <p style="line-height:1.7;margin:0 0 16px"><b>Founder &amp; Curator:</b> Devsharan Yadav<br /><b>Direct Instagram:</b> <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);text-decoration:underline">@devtoshsuperbazaar</a><br /><b>Website:</b> <a href="${BASE_ORIGIN}/" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar.github.io</a></p>
-          <p class="mu" style="font-size:13px;line-height:1.6;margin:0">For product returns or shipping tracking, please contact the retailer (Meesho, Amazon, or Flipkart) directly using the order confirmation received in your email or SMS.</p>
+        <p class="lead">We welcome your feedback, catalog suggestions, merchant inquiries, and partnership proposals.</p>
+        <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
+          <h2 style="font-size:18px;margin:0 0 14px;color:var(--dp)">Editorial &amp; Business Inquiries</h2>
+          <dl class="sp" style="margin:0 0 18px">
+            <dt>Platform Name</dt><dd>DevTosh Superbazaar</dd>
+            <dt>Editorial Team</dt><dd>DevTosh Superbazaar Editorial Desk</dd>
+            <dt>Direct Email</dt><dd><a href="mailto:devtoshsuperbazaar@gmail.com" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar@gmail.com</a></dd>
+            <dt>Official Instagram</dt><dd><a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);text-decoration:underline">@devtoshsuperbazaar</a></dd>
+            <dt>Website</dt><dd><a href="${BASE_ORIGIN}/" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar.github.io</a></dd>
+          </dl>
+          <div style="padding:14px 16px;background:var(--bg);border-left:3px solid var(--wn);border-radius:2px">
+            <h3 style="font-size:15px;margin:0 0 6px;color:var(--dp)">Need Help With an Order, Shipping, or Refund?</h3>
+            <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">Because transactions occur entirely on third-party partner marketplaces (such as Meesho and participating partner retailers), <b>DevTosh Superbazaar does not have access to your order details, payment status, tracking numbers, or customer account</b>. For assistance with delivery delays, returns, replacements, or refunds, please contact the retailer where your order was placed using the confirmation email, SMS, or retailer mobile app.</p>
+          </div>
         </div>
       `
     },
     {
       slug: 'affiliate-disclosure',
       title: 'Affiliate Disclosure — DevTosh Superbazaar',
-      description: 'Learn how Devtosh SuperBazaar maintains editorial independence and how affiliate partnerships work.',
+      description: 'Learn how DevTosh Superbazaar maintains editorial independence and how affiliate partnerships work under ASCI guidelines.',
       heading: 'Affiliate Disclosure',
       body: `
-        <p class="lead">DevTosh Superbazaar participates in affiliate marketing programs. When you click on product links and make a purchase on partner retailer websites (such as Meesho), we may receive a small commission.</p>
-        <p class="mu" style="margin-top:16px;line-height:1.7">This commission comes at <b>no additional cost to you</b>. Retailers pay this referral fee directly from their marketing budgets, ensuring you always enjoy standard pricing, sales, and platform vouchers.</p>
-        <p class="mu" style="margin-top:20px;line-height:1.7">Our curation team selects garments and accessories based purely on design merits, fabric quality, and aesthetic value. An affiliate partnership never dictates product placement or positive reviews.</p>
+        <p class="lead">DevTosh Superbazaar believes in full transparency regarding how this website operates and earns revenue, in full accordance with the Advertising Standards Council of India (ASCI) guidelines and digital marketing standards.</p>
+        <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
+          <h2 style="font-size:18px;margin:0 0 14px;color:var(--dp)">How Affiliate Partnerships Work</h2>
+          <p style="line-height:1.75;margin:0 0 16px">DevTosh Superbazaar features curated product links directing users to third-party e-commerce platforms (including Meesho and other participating online retail marketplaces). We participate in affiliate marketing programs where qualifying purchases made via outbound links may earn our platform a referral commission.</p>
+          <p style="line-height:1.75;margin:0 0 16px"><b>No Extra Cost to You:</b> These commissions are paid directly by the partner platforms out of their marketing budgets. The retail price you pay, available coupons, promotional discounts, and payment terms remain exactly the same as if you visited the merchant platform directly.</p>
+          <p style="line-height:1.75;margin:0 0 16px"><b>Editorial Independence:</b> Products featured in our catalog and blog articles are selected based on editorial merit, utility, value for money, and customer satisfaction ratings. Affiliate partnerships do not guarantee favorable editorial placement, and we never accept payment to endorse substandard merchandise.</p>
+          <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0"><b>Pricing &amp; Availability Notice:</b> Merchant partner pricing, stock status, delivery timelines, and promotional coupons are dynamic and set solely by the external retailer. We cannot guarantee that a listed price will remain active after publication. Please confirm final details on the destination storefront prior to ordering.</p>
+        </div>
       `
     },
     {
       slug: 'privacy',
       title: 'Privacy Policy — DevTosh Superbazaar',
-      description: 'Read the privacy policy of DevTosh Superbazaar. Guest-first privacy architecture without mandatory logins or telemetry.',
+      description: 'Read the privacy policy of DevTosh Superbazaar. Guest-first privacy architecture without mandatory logins.',
       heading: 'Privacy Policy',
       body: `
-        <p class="lead">DevTosh Superbazaar operates on a strict privacy-first principle. Customers are not required to create accounts, submit email addresses, or log in to browse products or save favourites.</p>
-        <p class="mu" style="margin-top:16px;line-height:1.7">Your wishlist is saved locally in your own browser using standard HTML5 localStorage and is never transmitted to third parties.</p>
+        <p class="lead">DevTosh Superbazaar is built with a guest-first, privacy-respecting architecture. We strive to align our data handling with the principles of the Digital Personal Data Protection (DPDP) Act, 2023 of India.</p>
+        <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
+          <h2 style="font-size:18px;margin:0 0 14px;color:var(--dp)">1. Guest-First Architecture &amp; Data Minimization</h2>
+          <p style="line-height:1.75;margin:0 0 16px">We believe the best way to safeguard user privacy is not to collect personal data in the first place. You are not required to create an account, log in, or provide your name, phone number, physical address, or payment details to browse our catalog, read editorial articles, or save bookmarks.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">2. Local Browser Storage (Saved Items)</h2>
+          <p style="line-height:1.75;margin:0 0 16px">When you tap the heart icon to save products, the identifiers are saved exclusively in your web browser's HTML5 <code>localStorage</code>. This data never leaves your device, is never transmitted to our servers or Firestore database, and is never sold or shared. You can delete your bookmarks at any time by clearing your browser cache or unmarking saved items.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">3. Cloud Infrastructure &amp; Admin Authentication</h2>
+          <p style="line-height:1.75;margin:0 0 16px">Our catalog and blog content are delivered via GitHub Pages static hosting and backed by Google Cloud Firestore (<code>devtoshsuperbazaar-84898</code>). Firebase Authentication is utilized solely by authorized site administrators to publish catalog updates and editorial posts. No regular visitor accounts or user authentication profiles are created or maintained.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">4. Analytics &amp; Cookies</h2>
+          <p style="line-height:1.75;margin:0 0 16px">We use Google Analytics (gtag.js measurement ID: <code>G-9SSN7RQ6V1</code>) to track aggregate, non-personally identifiable traffic metrics (such as page views, device types, and referral sources). You can disable analytics tracking using standard browser privacy controls or content blockers.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">5. Third-Party Retailer Links</h2>
+          <p style="line-height:1.75;margin:0 0 16px">Our website contains outbound links to external merchant platforms (such as Meesho and other participating retailers). Once you leave DevTosh Superbazaar, your interactions, transactions, and personal information are governed by the privacy policy and terms of the respective external retailer.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">6. Your Rights &amp; Contact</h2>
+          <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">For privacy inquiries, technical data concerns, or questions regarding our guest-first architecture, please contact our editorial desk at <a href="mailto:devtoshsuperbazaar@gmail.com" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar@gmail.com</a>.</p>
+        </div>
       `
     },
     {
       slug: 'terms',
       title: 'Terms of Use — DevTosh Superbazaar',
-      description: 'Terms of service and catalog accuracy guidelines for DevTosh Superbazaar.',
+      description: 'Terms of service and catalog accuracy guidelines for DevTosh Superbazaar under Indian law.',
       heading: 'Terms of Use',
       body: `
-        <p class="lead">Welcome to DevTosh Superbazaar. Product details, prices, and availability are provided for discovery purposes and are subject to verification on official partner retailer websites.</p>
+        <p class="lead">Please review these Terms of Use carefully before using DevTosh Superbazaar. By accessing or browsing this website, you acknowledge and agree to these terms.</p>
+        <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
+          <h2 style="font-size:18px;margin:0 0 14px;color:var(--dp)">1. Nature of the Service</h2>
+          <p style="line-height:1.75;margin:0 0 16px">DevTosh Superbazaar is a free, curated product discovery and editorial catalog platform. We curate fashion apparel, electronics, mobile accessories, and lifestyle recommendations for Indian consumers. DevTosh Superbazaar is <b>not a seller, retailer, or marketplace vendor</b>.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">2. Third-Party Retailer Transactions &amp; Disclaimers</h2>
+          <p style="line-height:1.75;margin:0 0 16px">All product sales, orders, deliveries, returns, exchanges, warranty claims, and payments take place directly on third-party retailer storefronts (e.g., Meesho or the destination merchant platform). DevTosh Superbazaar does not collect payments, process bank details, manage shipping logistics, or guarantee product availability.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">3. Information Accuracy &amp; Price Fluctuations</h2>
+          <p style="line-height:1.75;margin:0 0 16px">While we strive to keep product specifications, discounts, and pricing accurate, external merchants frequently adjust prices and promotional offers. The price, shipping cost, and availability displayed on the merchant partner's checkout page at the time of purchase shall always supersede information shown on DevTosh Superbazaar.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">4. Intellectual Property</h2>
+          <p style="line-height:1.75;margin:0 0 16px">Original editorial commentary, blog posts, curated guides, design elements, and logos on DevTosh Superbazaar are the property of DevTosh Superbazaar. Third-party brand names, registered trademarks, and partner logos belong to their respective proprietors and are referenced strictly for nominative identification and affiliate referral purposes.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">5. Limitation of Liability</h2>
+          <p style="line-height:1.75;margin:0 0 16px">To the fullest extent permitted under Indian law, DevTosh Superbazaar and its operators shall not be liable for any indirect, incidental, or consequential damages resulting from product purchases, retailer fulfillment failures, delivery delays, or website downtime.</p>
+          <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">6. Governing Law &amp; Jurisdiction</h2>
+          <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">These Terms of Use are governed by the laws of India. Any disputes arising in connection with the platform shall be subject to the exclusive jurisdiction of the competent courts in India.</p>
+        </div>
       `
     }
   ];
@@ -1092,7 +1263,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   for (const info of infoPages) {
     const canonicalUrl = `${BASE_ORIGIN}/${info.slug}/`;
     const jsonLd = {
-      '@type': 'WebPage',
+      '@type': (info as any).schemaType || 'WebPage',
       '@id': `${canonicalUrl}#webpage`,
       'name': info.title,
       'description': info.description,
@@ -1128,6 +1299,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
     sitemapUrls.push({
       loc: canonicalUrl,
+      lastmod: todayStr,
       changefreq: 'monthly',
       priority: '0.50'
     });
@@ -1140,35 +1312,35 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   const wishlistCanonical = `${BASE_ORIGIN}/wishlist/`;
   const wishlistFaqs = [
     {
-      q: 'How does the DevTosh Superbazaar Wishlist work?',
-      a: 'Items you save by clicking the heart icon are stored privately in your browser using local storage. You do not need to create an account or provide personal data.'
+      q: 'How do saved items work on DevTosh Superbazaar?',
+      a: 'Items you bookmark by clicking the heart icon are saved privately in your web browser using HTML5 local storage. You do not need to register, create an account, or submit any personal information.'
     },
     {
-      q: 'Will my saved wishlist items expire?',
-      a: 'Saved items remain in your browser until you remove them or clear your browser browsing data. Wishlist items are never shared with third parties or indexed by search engines.'
+      q: 'Will my bookmarks expire or be deleted?',
+      a: 'Your saved items stay on your device until you remove them or clear your browser browsing data. Bookmarks are completely private and never transmitted to our servers or indexed by search engines.'
     }
   ];
 
   const wishlistMainHtml = `
     <section class="w pgs wide">
       <nav class="bc" aria-label="Breadcrumb">
-        <a href="/">Home</a> / <span aria-current="page">Wishlist</span>
+        <a href="/">Home</a> / <span aria-current="page">Saved Items</span>
       </nav>
       <div class="tt">
-        <h1 class="f" tabindex="-1">Your Wishlist</h1>
-        <span class="mu" id="wishlist-count-badge">Private Guest Wishlist</span>
+        <h1 class="f" tabindex="-1">Saved Items</h1>
+        <span class="mu" id="wishlist-count-badge">Private Browser Storage</span>
       </div>
       <div id="wishlist-dynamic-container" style="margin-top:24px">
-        <p class="lead">Your wishlist is currently empty or loading from local storage. Click the heart icon on any product to save it here for later reference.</p>
+        <p class="lead">You haven't bookmarked any products yet. Tap the heart icon on any product card or detail page to pin it here for quick reference.</p>
         <p style="margin-top:20px"><a class="vp" href="/">Explore All Collections →</a></p>
       </div>
-      ${renderFaqsHtml(wishlistFaqs, 'Wishlist Questions & Privacy', 'How our private, guest-first wishlist works on your browser.', 'wishlist')}
+      ${renderFaqsHtml(wishlistFaqs, 'Frequently Asked Questions About Saved Items', 'How our private, client-side bookmarks operate in your web browser.', 'wishlist')}
     </section>
   `;
 
   // Wishlist explicitly has noindex: true and NO structured data
   const wishlistHtml = assembleHtml({
-    title: 'My Saved Wishlist | DevTosh Superbazaar',
+    title: 'My Saved Items | DevTosh Superbazaar',
     description: 'View and manage your saved fashion, footwear, mobile accessories, and lifestyle items.',
     canonicalUrl: wishlistCanonical,
     noindex: true,
@@ -1287,7 +1459,11 @@ Sitemap: ${BASE_ORIGIN}/sitemap.xml
 }
 
 // Execute when invoked directly
-prerender().catch(err => {
-  console.error('[SSG Prerender Error]', err);
-  process.exit(1);
-});
+prerender()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(err => {
+    console.error('[SSG Prerender Error]', err);
+    process.exit(1);
+  });
