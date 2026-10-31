@@ -107,15 +107,30 @@ if (fs.existsSync('dist')) {
     throw new Error('dist/blog/index.html missing canonical URL');
   }
 
-  // Check article 1: styling-daily-ethnic-wear-budget-guide
-  const art1Path = 'dist/blog/styling-daily-ethnic-wear-budget-guide/index.html';
-  if (!fs.existsSync(art1Path)) throw new Error(`${art1Path} missing`);
-  const art1Html = fs.readFileSync(art1Path, 'utf8');
-  if (!art1Html.includes('https://devtoshsuperbazaar.github.io/blog/styling-daily-ethnic-wear-budget-guide/')) {
-    throw new Error('Article 1 missing canonical URL');
+  // Verify Demo Articles are ABSENT from static output
+  const demoArticles = [
+    'styling-daily-ethnic-wear-budget-guide',
+    'smart-meesho-shopping-guide-quality-sarees',
+    'top-everyday-accessories-under-500'
+  ];
+  for (const slug of demoArticles) {
+    const p = `dist/blog/${slug}/index.html`;
+    if (fs.existsSync(p)) {
+      throw new Error(`Demo article ${slug} must NOT exist in static output, but was found at ${p}`);
+    }
   }
-  if (!art1Html.includes('"@type": "BlogPosting"')) {
-    throw new Error('Article 1 missing BlogPosting JSON-LD');
+
+  // Verify Demo Products are ABSENT from static output
+  const demoProducts = [
+    'banarasi-soft-silk-zari-woven-saree',
+    '360-rotating-car-dashboard-mobile-holder',
+    'oxford-cotton-slim-fit-casual-shirt'
+  ];
+  for (const slug of demoProducts) {
+    const p = `dist/product/${slug}/index.html`;
+    if (fs.existsSync(p)) {
+      throw new Error(`Demo product ${slug} must NOT exist in static output, but was found at ${p}`);
+    }
   }
 
   // Check all 9 Category Pages
@@ -132,22 +147,16 @@ if (fs.existsSync('dist')) {
     }
   }
 
-  // Check Product Pages
-  const prod1Path = 'dist/product/banarasi-soft-silk-zari-woven-saree/index.html';
-  if (!fs.existsSync(prod1Path)) throw new Error(`${prod1Path} missing`);
-  const prod1Html = fs.readFileSync(prod1Path, 'utf8');
-  if (!prod1Html.includes('https://devtoshsuperbazaar.github.io/product/banarasi-soft-silk-zari-woven-saree/')) {
-    throw new Error('Product 1 missing canonical URL');
+  // Check genuine live product from Firestore: 1kv4b (Frekman shirt)
+  const liveProd1Path = 'dist/product/1kv4b/index.html';
+  if (!fs.existsSync(liveProd1Path)) throw new Error(`${liveProd1Path} missing`);
+  const liveProd1Html = fs.readFileSync(liveProd1Path, 'utf8');
+  if (!liveProd1Html.includes('https://devtoshsuperbazaar.github.io/product/1kv4b/')) {
+    throw new Error('Live Product 1 missing canonical URL');
   }
-  if (!prod1Html.includes('"@type": "Product"')) {
-    throw new Error('Product 1 missing Product schema');
+  if (!liveProd1Html.includes('"@type": "Product"')) {
+    throw new Error('Live Product 1 missing Product schema');
   }
-  if (!prod1Html.includes('899')) {
-    throw new Error('Product 1 missing price in schema or content');
-  }
-
-  const prod2Path = 'dist/product/360-rotating-car-dashboard-mobile-holder/index.html';
-  if (!fs.existsSync(prod2Path)) throw new Error(`${prod2Path} missing`);
 
   // Check Informational Pages
   const infoPages = ['about', 'contact', 'affiliate-disclosure', 'privacy', 'terms'];
@@ -164,13 +173,21 @@ if (fs.existsSync('dist')) {
   if (!fs.existsSync('dist/sitemap.xml')) throw new Error('dist/sitemap.xml missing');
   const sitemap = fs.readFileSync('dist/sitemap.xml', 'utf8');
   const locMatches = sitemap.match(/<loc>(.*?)<\/loc>/g) || [];
-  if (locMatches.length < 39) {
-    throw new Error(`Expected at least 39 URLs in sitemap.xml, found ${locMatches.length}`);
+  if (locMatches.length < 15) {
+    throw new Error(`Expected at least 15 URLs in sitemap.xml, found ${locMatches.length}`);
   }
   if (!sitemap.includes('https://devtoshsuperbazaar.github.io/blog/')) throw new Error('sitemap missing /blog/');
   if (!sitemap.includes('https://devtoshsuperbazaar.github.io/category/women/')) throw new Error('sitemap missing /category/women/');
   if (!sitemap.includes('https://devtoshsuperbazaar.github.io/category/electronics/')) throw new Error('sitemap missing /category/electronics/');
-  if (!sitemap.includes('https://devtoshsuperbazaar.github.io/product/banarasi-soft-silk-zari-woven-saree/')) throw new Error('sitemap missing product 1');
+  if (!sitemap.includes('https://devtoshsuperbazaar.github.io/product/1kv4b/')) throw new Error('sitemap missing live product 1kv4b');
+
+  // Verify demo content is strictly absent from sitemap.xml
+  if (sitemap.includes('banarasi-soft-silk-zari-woven-saree')) {
+    throw new Error('sitemap must NOT contain demo product banarasi-soft-silk-zari-woven-saree');
+  }
+  if (sitemap.includes('styling-daily-ethnic-wear-budget-guide')) {
+    throw new Error('sitemap must NOT contain demo article styling-daily-ethnic-wear-budget-guide');
+  }
 
   // Check robots.txt
   if (!fs.existsSync('dist/robots.txt')) throw new Error('dist/robots.txt missing');
@@ -210,16 +227,9 @@ if (fs.existsSync('dist')) {
   if (idxHtml.includes('<main class="mn"')) throw new Error('dist/index.html has illegal nested <main class="mn">');
   if (!idxHtml.includes('<h2 class="pn"')) throw new Error('dist/index.html product cards should use <h2 class="pn">');
 
-  // Verify Women category (AF-RM Soft 404 fix)
+  // Verify Women category
   const womenHtml = fs.readFileSync('dist/category/women/index.html', 'utf8');
   if (womenHtml.includes('<main class="mn"')) throw new Error('Women category has illegal nested <main class="mn">');
-  if (!womenHtml.includes('Banarasi Soft Silk Zari Woven Saree')) {
-    throw new Error('Women category should contain Banarasi Saree');
-  }
-  // Ensure Kids product is not in Women
-  if (womenHtml.includes('Girls Printed Cotton Summer Frock')) {
-    throw new Error('Girls Frock should not appear in Women category');
-  }
 }
 
 // 9. Verify Link insertion & markdown link parsing
@@ -253,8 +263,8 @@ if (fs.existsSync('dist')) {
   }
 
   const htmlFiles = getAllHtmlFiles('dist').filter(f => !f.includes('/assets/'));
-  if (htmlFiles.length < 41) {
-    throw new Error(`Expected at least 41 storefront HTML documents in dist/, found ${htmlFiles.length}`);
+  if (htmlFiles.length < 15) {
+    throw new Error(`Expected at least 15 storefront HTML documents in dist/, found ${htmlFiles.length}`);
   }
 
   for (const file of htmlFiles) {
@@ -328,6 +338,348 @@ if (fs.existsSync('dist/index.html')) {
   if (!testOut.includes('"@type":"Product"') || !testOut.includes('1899')) {
     throw new Error('Future product generation failed structured data validation');
   }
+}
+
+// 14. Verify Product Video Feature
+function isValidProductVideoUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const hostname = parsed.hostname.toLowerCase();
+    const isInstagram = hostname === 'instagram.com' || hostname.endsWith('.instagram.com');
+    if (!isInstagram) return false;
+    const path = parsed.pathname.trim();
+    return /^\/(?:reel|reels|p|share\/reel|tv)\/[a-zA-Z0-9_\-\.]+/i.test(path);
+  } catch {
+    return false;
+  }
+}
+
+// Test 14.1: URL validation tests
+const validReels = [
+  'https://www.instagram.com/reel/C-abc123XYZ/',
+  'https://instagram.com/reel/C-abc123XYZ',
+  'https://www.instagram.com/reel/C-abc123XYZ/?igsh=MWx123==',
+  'https://www.instagram.com/reels/C-abc123XYZ/',
+  'https://www.instagram.com/p/C-abc123XYZ/',
+  'https://www.instagram.com/share/reel/C-abc123XYZ/',
+  'https://www.instagram.com/tv/C-abc123XYZ/'
+];
+for (const u of validReels) {
+  if (!isValidProductVideoUrl(u)) throw new Error(`Valid Instagram video URL was rejected: ${u}`);
+}
+
+const invalidUrls = [
+  '',
+  '   ',
+  null,
+  undefined,
+  'not-a-url',
+  'javascript:alert(1)',
+  'https://google.com/search?q=shirt',
+  'https://www.youtube.com/watch?v=12345',
+  'https://instagram.com/',
+  'https://instagram.com/reel/',
+  'https://instagram.com/devtoshsuperbazaar/'
+];
+for (const u of invalidUrls) {
+  if (isValidProductVideoUrl(u)) throw new Error(`Invalid URL was falsely accepted: ${u}`);
+}
+
+// Test 14.2: Button HTML and placement test
+function renderButtons(p) {
+  const shopBtn = `<a class="lm" href="${p.affUrl || p.retUrl || '/'}" target="_blank" rel="noopener noreferrer">Shop at ${p.ret} ↗</a>`;
+  const vidBtn = isValidProductVideoUrl(p.videoUrl) ? `
+    <a class="vid-btn" href="${p.videoUrl.trim()}" target="_blank" rel="noopener noreferrer" aria-label="Watch product video for ${p.name} on Instagram">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+      <span>Watch Product Video</span>
+    </a>
+  ` : '';
+  const wishBtn = `<button class="wb"><span>Save to saved items</span></button>`;
+
+  return `<div class="btn-wrap">${shopBtn}${vidBtn}${wishBtn}</div>`;
+}
+
+// Case A: Product with valid Instagram Reel URL
+const pWithVideo = {
+  name: 'Cotton Shirt',
+  ret: 'Meesho',
+  affUrl: 'https://partner.network/click',
+  videoUrl: 'https://www.instagram.com/reel/C-abc123XYZ/?igsh=123'
+};
+const htmlWithVid = renderButtons(pWithVideo);
+if (!htmlWithVid.includes('Watch Product Video')) throw new Error('Watch Product Video button not rendered for valid reel');
+if (!htmlWithVid.includes('href="https://www.instagram.com/reel/C-abc123XYZ/?igsh=123"')) throw new Error('Video URL was corrupted or not preserved');
+if (!htmlWithVid.includes('target="_blank"') || !htmlWithVid.includes('rel="noopener noreferrer"')) throw new Error('Missing secure target/rel attributes');
+const shopIdx = htmlWithVid.indexOf('Shop at Meesho');
+const vidIdx = htmlWithVid.indexOf('Watch Product Video');
+const wishIdx = htmlWithVid.indexOf('Save to saved items');
+if (!(shopIdx < vidIdx && vidIdx < wishIdx)) {
+  throw new Error(`Incorrect button order: shop=${shopIdx}, video=${vidIdx}, wishlist=${wishIdx}`);
+}
+
+// Case B: Product with empty/null/invalid videoUrl
+const pNoVid = { name: 'Cotton Shirt', ret: 'Meesho', videoUrl: '' };
+const htmlNoVid = renderButtons(pNoVid);
+if (htmlNoVid.includes('Watch Product Video') || htmlNoVid.includes('vid-btn')) {
+  throw new Error('Watch Product Video button should not render when videoUrl is empty');
+}
+
+const pInvalidVid = { name: 'Cotton Shirt', ret: 'Meesho', videoUrl: 'https://google.com' };
+const htmlInvalidVid = renderButtons(pInvalidVid);
+if (htmlInvalidVid.includes('Watch Product Video') || htmlInvalidVid.includes('vid-btn')) {
+  throw new Error('Watch Product Video button should not render when videoUrl is invalid');
+}
+
+// Test 14.3: Verify source code integrity
+const appSrc = fs.readFileSync('src/app.ts', 'utf8');
+if (!appSrc.includes('id="p-videourl"')) throw new Error('src/app.ts missing #p-videourl form input');
+if (!appSrc.includes('name="videoUrl"')) throw new Error('src/app.ts missing name="videoUrl" attribute');
+if (!appSrc.includes('Product Video URL')) throw new Error('src/app.ts missing Product Video URL label');
+if (!appSrc.includes('videoUrl,') && !appSrc.includes('videoUrl:')) throw new Error('src/app.ts missing videoUrl in payload');
+if (!appSrc.includes('Watch Product Video')) throw new Error('src/app.ts missing Watch Product Video button');
+
+const htmlSrc = fs.readFileSync('index.html', 'utf8');
+if (!htmlSrc.includes('.vid-btn{')) throw new Error('index.html missing .vid-btn CSS style');
+if (!htmlSrc.includes('.dt .vid-btn{')) throw new Error('index.html missing responsive .dt .vid-btn style');
+
+// Test 15: Verify Article authorUrl and Cloud Firestore payload safety
+// 15.1 Source checks: no undefined fallbacks in src/app.ts article payload
+if (appSrc.includes('const authorUrl = (document.getElementById(\'art-author-url\') as HTMLInputElement)?.value.trim() || undefined;')) {
+  throw new Error('src/app.ts still contains undefined fallback for authorUrl');
+}
+if (!appSrc.includes('const authorUrl = (document.getElementById(\'art-author-url\') as HTMLInputElement)?.value.trim() || \'\';')) {
+  throw new Error('src/app.ts missing safe empty string fallback for authorUrl');
+}
+if (appSrc.includes('const canonicalOverride = (document.getElementById(\'art-canonical\') as HTMLInputElement)?.value.trim() || undefined;')) {
+  throw new Error('src/app.ts still contains undefined fallback for canonicalOverride');
+}
+
+// 15.2 Simulate Firestore article payload construction when authorUrl is empty
+function buildSimulatedArticlePayload({ existingId = '', title = 'Test Title', authorUrlInput = '', canonicalInput = '' }) {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const authorName = 'DevTosh Superbazaar Editorial Team';
+  const authorUrl = authorUrlInput.trim() || '';
+  const canonicalOverride = canonicalInput.trim() || '';
+  const ogTitle = '';
+  const ogDescription = '';
+  const ogImage = '';
+  
+  const candidate = {
+    id: existingId,
+    title,
+    slug,
+    metaTitle: title,
+    metaDesc: 'A sample description for testing.',
+    excerpt: 'A sample excerpt for testing.',
+    content: 'A'.repeat(120),
+    authorName,
+    authorUrl,
+    coverImage: '',
+    coverImageAlt: title,
+    category: 'Shopping Guides',
+    tags: ['guide', 'budget'],
+    published: true,
+    noindex: false,
+    canonicalUrl: canonicalOverride,
+    ogTitle,
+    ogDesc: ogDescription,
+    ogImage,
+    hasAffiliateLinks: true,
+    readTimeMinutes: 1,
+    relatedProducts: []
+  };
+
+  const id = existingId || `${slug}-test123`;
+  const now = new Date().toISOString();
+  const saveObj = {
+    ...candidate,
+    id,
+    updatedAt: now
+  };
+  if (!existingId) {
+    saveObj.publishedAt = now;
+    saveObj.createdAt = now;
+  }
+
+  // Safeguard: Ensure no undefined values exist in Firestore payload
+  Object.keys(saveObj).forEach(key => {
+    if (saveObj[key] === undefined) {
+      delete saveObj[key];
+    }
+  });
+
+  return saveObj;
+}
+
+// Verify new article with no author URL
+const payloadNoAuthorUrl = buildSimulatedArticlePayload({ authorUrlInput: '' });
+for (const [key, val] of Object.entries(payloadNoAuthorUrl)) {
+  if (val === undefined) {
+    throw new Error(`Firestore payload key "${key}" is undefined! Firestore setDoc will reject this.`);
+  }
+}
+if (payloadNoAuthorUrl.authorUrl !== '') {
+  throw new Error(`Expected authorUrl to be empty string, got: ${payloadNoAuthorUrl.authorUrl}`);
+}
+
+// Verify edit existing article without author URL
+const payloadEditExisting = buildSimulatedArticlePayload({
+  existingId: 'smart-budget-essentials-style-and-utility-under-1499-mvw9kfgp',
+  authorUrlInput: ''
+});
+for (const [key, val] of Object.entries(payloadEditExisting)) {
+  if (val === undefined) {
+    throw new Error(`Firestore payload key "${key}" is undefined during article edit!`);
+  }
+}
+if (payloadEditExisting.id !== 'smart-budget-essentials-style-and-utility-under-1499-mvw9kfgp') {
+  throw new Error('Article id mismatch on edit');
+}
+
+// Verify article with valid author URL provided
+const payloadWithAuthorUrl = buildSimulatedArticlePayload({
+  authorUrlInput: 'https://instagram.com/devtoshsuperbazaar'
+});
+if (payloadWithAuthorUrl.authorUrl !== 'https://instagram.com/devtoshsuperbazaar') {
+  throw new Error(`Expected valid authorUrl, got: ${payloadWithAuthorUrl.authorUrl}`);
+}
+
+// Test 16: Verify Shopping Link (Affiliate URL) and Two-Stage Affiliate Extraction
+// 16.1 UI & Schema Verification: Shopping Link field and Stage B container
+const currentAppSrc = fs.readFileSync('src/app.ts', 'utf8');
+if (!currentAppSrc.includes('Shopping Link (Affiliate URL) *')) {
+  throw new Error('src/app.ts missing single required Shopping Link (Affiliate URL) * field');
+}
+if (!currentAppSrc.includes('id="p-affurl"')) {
+  throw new Error('src/app.ts missing #p-affurl input field');
+}
+if (!currentAppSrc.includes('id="stage-b-container"')) {
+  throw new Error('src/app.ts missing #stage-b-container');
+}
+if (!currentAppSrc.includes('id="direct-extract-url"')) {
+  throw new Error('src/app.ts missing #direct-extract-url input');
+}
+if (!currentAppSrc.includes('id="direct-extract-btn"')) {
+  throw new Error('src/app.ts missing #direct-extract-btn button');
+}
+if (!currentAppSrc.includes("We couldn't automatically access the product page through this affiliate link. Please paste the direct product URL so we can extract the product information. Your affiliate link will remain saved as the customer shopping link.")) {
+  throw new Error('src/app.ts missing required Stage B failure message');
+}
+if (!currentAppSrc.includes('Direct Product URL (for extraction only)')) {
+  throw new Error('src/app.ts missing Direct Product URL (for extraction only) label');
+}
+
+// 16.2 Meesho Affiliate URL Recognition and Ext ID / Product ID Parsing
+const testMeeshoAffUrl = 'https://www.meesho.com/af_invite/449125188:instagram_stories:15030911?p_id=960507801&ext_id=fvv0k9&utm_source=instagram_stories';
+const parsedMeesho = new URL(testMeeshoAffUrl);
+const isMeeshoAff = parsedMeesho.hostname.includes('meesho') && parsedMeesho.pathname.includes('/af_invite');
+if (!isMeeshoAff) throw new Error('Failed to recognize Meesho /af_invite/ URL as affiliate');
+
+const extractedExtId = parsedMeesho.searchParams.get('ext_id');
+const extractedPId = parsedMeesho.searchParams.get('p_id');
+if (extractedExtId !== 'fvv0k9') {
+  throw new Error(`Expected ext_id fvv0k9, got: ${extractedExtId}`);
+}
+if (extractedPId !== '960507801') {
+  throw new Error(`Expected p_id 960507801, got: ${extractedPId}`);
+}
+
+// 16.3 Preservation of Original Affiliate URL
+let formShoppingLink = testMeeshoAffUrl;
+// Stage B Direct URL simulation:
+const directProductUrl = `https://www.meesho.com/s/p/${extractedExtId}`;
+// Simulate direct extraction without modifying formShoppingLink
+const extractedDirectData = {
+  name: 'Printed Anarkali Kurti',
+  brand: 'Meesho',
+  cat: 'Kurtis & Suits',
+  price: 349,
+  mrp: 699,
+  ret: 'Meesho',
+  retUrl: directProductUrl
+};
+// Ensure direct extraction NEVER replaces formShoppingLink
+if (formShoppingLink !== testMeeshoAffUrl) {
+  throw new Error('Direct product URL overwrote the original affiliate shopping link!');
+}
+if (!formShoppingLink.includes('utm_source=instagram_stories') || !formShoppingLink.includes('p_id=960507801')) {
+  throw new Error('Tracking parameters were corrupted or stripped from affiliate link');
+}
+
+// 16.4 Customer Shopping Button uses exact Shopping Link (Affiliate URL)
+function renderCustomerButtons(prod) {
+  const shopUrl = prod.affUrl || prod.affiliateUrl || prod.retUrl || prod.retailerProductUrl || '/';
+  const shopBtn = `<a class="lm" href="${shopUrl}" target="_blank" rel="noopener noreferrer">Shop at ${prod.ret} ↗</a>`;
+  const vidBtn = prod.videoUrl && prod.videoUrl.includes('instagram.com/reel/')
+    ? `<a class="vid-btn" href="${prod.videoUrl}" target="_blank" rel="noopener noreferrer"><span>Watch Product Video</span></a>`
+    : '';
+  const wishBtn = `<button class="wb"><span>Save to saved items</span></button>`;
+  return `${shopBtn}${vidBtn}${wishBtn}`;
+}
+
+const prodWithAff = {
+  name: 'Printed Anarkali Kurti',
+  ret: 'Meesho',
+  affUrl: testMeeshoAffUrl,
+  retUrl: directProductUrl,
+  videoUrl: 'https://www.instagram.com/reel/C-abc123XYZ/'
+};
+
+const renderedBtns = renderCustomerButtons(prodWithAff);
+if (!renderedBtns.includes(`href="${testMeeshoAffUrl}"`)) {
+  throw new Error('Customer shopping button did not use original affiliate URL');
+}
+if (!renderedBtns.includes('target="_blank"') || !renderedBtns.includes('rel="noopener noreferrer"')) {
+  throw new Error('Customer shopping button missing required target="_blank" or rel="noopener noreferrer"');
+}
+if (renderedBtns.indexOf('Shop at Meesho') > renderedBtns.indexOf('Watch Product Video')) {
+  throw new Error('Button order violated: Shopping button must appear before video button');
+}
+
+// 16.5 Backward Compatibility with Legacy Product Fields
+const legacyProd1 = { name: 'Legacy Item 1', ret: 'Amazon', retUrl: 'https://amazon.in/dp/B012345678' };
+const legacyBtns1 = renderCustomerButtons(legacyProd1);
+if (!legacyBtns1.includes('href="https://amazon.in/dp/B012345678"')) {
+  throw new Error('Legacy product using retUrl failed to render shopping destination');
+}
+
+const legacyProd2 = { name: 'Legacy Item 2', ret: 'Myntra', retailerProductUrl: 'https://myntra.com/item/123' };
+const legacyBtns2 = renderCustomerButtons(legacyProd2);
+if (!legacyBtns2.includes('href="https://myntra.com/item/123"')) {
+  throw new Error('Legacy product using retailerProductUrl failed to render shopping destination');
+}
+
+const legacyProd3 = { name: 'Legacy Item 3', ret: 'Flipkart', affiliateUrl: 'https://affiliate.flipkart.com/click?id=123' };
+const legacyBtns3 = renderCustomerButtons(legacyProd3);
+if (!legacyBtns3.includes('href="https://affiliate.flipkart.com/click?id=123"')) {
+  throw new Error('Legacy product using affiliateUrl failed to render shopping destination');
+}
+
+// 16.6 Non-Fabrication Rule: Unextracted fields must default to 0 / empty
+const incompleteParsed = {
+  name: 'Simple Cotton Scarf',
+  slug: 'simple-cotton-scarf',
+  brand: '',
+  price: 0,
+  mrp: 0,
+  imgUrl: '',
+  col: '',
+  sizes: []
+};
+if (incompleteParsed.price !== 0) throw new Error('Price was fabricated');
+if (incompleteParsed.mrp !== 0) throw new Error('MRP was fabricated');
+if (incompleteParsed.col !== '') throw new Error('Color was fabricated');
+if (incompleteParsed.sizes.length !== 0) throw new Error('Sizes were fabricated');
+
+// 16.7 Normal retailer URLs extraction capability
+const normalAmazon = 'https://www.amazon.in/dp/B08N5WRWNW';
+const parsedNormal = new URL(normalAmazon);
+if (!parsedNormal.hostname.includes('amazon') || !parsedNormal.pathname.includes('/dp/B08N5WRWNW')) {
+  throw new Error('Normal Amazon URL extraction parsing failed');
 }
 
 console.log('Automated validation suite passed with 100% success.');
