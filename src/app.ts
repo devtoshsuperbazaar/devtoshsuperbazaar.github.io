@@ -56,6 +56,8 @@ import {
   isAccessoriesProduct,
   isHomeLivingProduct,
   isMenProduct,
+  isNewProduct,
+  getSafeProductSlug,
   SITE_CATEGORIES,
   CategoryMeta,
   isValidProductVideoUrl
@@ -71,6 +73,8 @@ export {
   isAccessoriesProduct,
   isHomeLivingProduct,
   isMenProduct,
+  isNewProduct,
+  getSafeProductSlug,
   SITE_CATEGORIES,
   isValidProductVideoUrl
 };
@@ -1632,14 +1636,14 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
             <div id="import-status" style="font-size:12.5px;margin-top:10px"></div>
 
             <!-- Stage B: Direct Product URL (for extraction only) Container -->
-            <div id="stage-b-container" style="display:none;margin-top:14px;background:#FFF8E1;border:1px solid #FFE082;border-left:4px solid #FFA000;padding:14px 16px;border-radius:4px">
-              <div id="stage-b-message" style="color:#5D4037;font-size:13px;line-height:1.5;margin-bottom:12px">
+            <div id="stage-b-container" style="display:none;margin-top:14px;background:var(--sf);border:1px solid var(--bd);border-left:4px solid var(--wn);padding:14px 16px;border-radius:4px">
+              <div id="stage-b-message" style="color:var(--dp);font-size:13px;line-height:1.5;margin-bottom:12px;font-weight:500">
                 We couldn't automatically access the product page through this affiliate link. Please paste the direct product URL so we can extract the product information. Your affiliate link will remain saved as the customer shopping link.
               </div>
               <div class="adm-field" style="margin-bottom:8px">
-                <label for="direct-extract-url" style="font-weight:700;font-size:12.5px;color:#3E2723">Direct Product URL (for extraction only)</label>
+                <label for="direct-extract-url" style="font-weight:700;font-size:12.5px;color:var(--dp)">Direct Product URL (for extraction only)</label>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                  <input type="url" id="direct-extract-url" placeholder="https://www.meesho.com/s/p/... or https://www.meesho.com/.../p/..." class="adm-input" style="flex:1;min-width:240px;background:#fff" />
+                  <input type="url" id="direct-extract-url" placeholder="https://www.meesho.com/s/p/... or https://www.meesho.com/.../p/..." class="adm-input" style="flex:1;min-width:240px;background:var(--bg);border:1px solid var(--bd);color:var(--tx)" />
                   <button type="button" id="direct-extract-btn" class="lm" style="white-space:nowrap;padding:0 18px;height:42px;font-weight:600">Extract from Direct URL</button>
                 </div>
               </div>
@@ -1673,19 +1677,19 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
             </div>
 
             <div class="adm-field">
-              <label for="p-slug">URL Slug * <span class="mu">(lowercase, hyphens only)</span></label>
-              <input type="text" id="p-slug" required pattern="^[a-z0-9-]+$" value="${esc(p?.slug || '')}" class="adm-input" placeholder="mens-cotton-regular-fit-shirt" />
+              <label for="p-slug">URL Slug * <span class="mu">(lowercase, hyphens only, max 65 chars)</span></label>
+              <input type="text" id="p-slug" required pattern="^[a-z0-9-]+$" maxlength="65" value="${esc(p?.slug || '')}" class="adm-input" placeholder="mens-cotton-regular-fit-shirt" />
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
               <div class="adm-field">
                 <label for="p-brand">Brand *</label>
-                <input type="text" id="p-brand" required value="${esc(p?.brand || 'DevTosh Superbazaar Curated')}" class="adm-input" placeholder="e.g. Meesho Supplier or Devtosh SuperBazaar" />
+                <input type="text" id="p-brand" required value="${esc(p?.brand || '')}" class="adm-input" placeholder="e.g. Brand Name or Supplier" />
               </div>
 
               <div class="adm-field">
                 <label for="p-cat">Category *</label>
-                <input type="text" id="p-cat" list="standard-cats" required value="${esc(p?.cat || 'Mobile Holders & Mounts')}" class="adm-input" placeholder="Type or select category…" />
+                <input type="text" id="p-cat" list="standard-cats" required value="${esc(p?.cat || '')}" class="adm-input" placeholder="Type or select category…" />
                 <datalist id="standard-cats">
                   <option value="Mobile Holders &amp; Mounts" />
                   <option value="Electronics &amp; Mobiles" />
@@ -1735,12 +1739,12 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
               <div class="adm-field">
                 <label for="p-col">Colour</label>
-                <input type="text" id="p-col" value="${esc(p?.col || 'White')}" class="adm-input" placeholder="e.g. Navy Blue, Olive, Black" />
+                <input type="text" id="p-col" value="${esc(p?.col || '')}" class="adm-input" placeholder="e.g. Navy Blue, Olive, Black" />
               </div>
 
               <div class="adm-field">
                 <label for="p-sizes">Available Sizes <span class="mu">(comma-separated)</span></label>
-                <input type="text" id="p-sizes" value="${esc(p?.sizes?.join(', ') || 'S, M, L, XL')}" class="adm-input" placeholder="S, M, L, XL" />
+                <input type="text" id="p-sizes" value="${esc(p?.sizes?.join(', ') || '')}" class="adm-input" placeholder="S, M, L, XL" />
               </div>
             </div>
 
@@ -2566,7 +2570,7 @@ export function view(route: ReturnType<typeof parseRoute>) {
   }
 
   if (root === 'new') {
-    const items = [...store.products].sort((a, b) => (b.added || 0) - (a.added || 0));
+    const items = store.products.filter(isNewProduct).sort((a, b) => (b.added || 0) - (a.added || 0));
     return renderPublicCatalog(
       'New Arrivals',
       'The freshest curated additions, trending styles, and top-rated affiliate deals.',
@@ -2591,7 +2595,8 @@ export function view(route: ReturnType<typeof parseRoute>) {
   }
 
   if (root === 'product' && sub) {
-    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub);
+    const prod = store.products.find(p => p.slug === sub || getSafeProductSlug(p.slug, p.id, p.name) === sub || p.id === sub) 
+      || store.adminProducts.find(p => p.slug === sub || getSafeProductSlug(p.slug, p.id, p.name) === sub || p.id === sub);
     if (prod) return renderProductDetail(prod);
 
     // If public products from Cloud Firestore have not finished loading yet,
@@ -2604,7 +2609,8 @@ export function view(route: ReturnType<typeof parseRoute>) {
   }
 
   if (root === 'go' && sub) {
-    const prod = store.products.find(p => p.slug === sub) || store.adminProducts.find(p => p.slug === sub);
+    const prod = store.products.find(p => p.slug === sub || getSafeProductSlug(p.slug, p.id, p.name) === sub || p.id === sub) 
+      || store.adminProducts.find(p => p.slug === sub || getSafeProductSlug(p.slug, p.id, p.name) === sub || p.id === sub);
     if (prod) {
       const destination = prod.affUrl || prod.retUrl;
       return {
@@ -4236,23 +4242,47 @@ document.addEventListener('click', async (e) => {
       // Update price calculation discount preview
       priceInput?.dispatchEvent(new Event('input'));
 
-      const fieldsCount = [
-        extracted.name, extracted.price > 0 ? extracted.price : null, extracted.mrp && extracted.mrp > 0 ? extracted.mrp : null,
-        extracted.cat, extracted.col, extracted.sizes?.length, extracted.imgUrl, extracted.ret
-      ].filter(Boolean).length;
+      const verifiedList: string[] = [];
+      const unverifiedList: string[] = [];
+
+      if (extracted.name) verifiedList.push('Title'); else unverifiedList.push('Title');
+      if (extracted.brand) verifiedList.push(`Brand (${extracted.brand})`); else unverifiedList.push('Brand');
+      if (extracted.price > 0) verifiedList.push(`Price (₹${extracted.price})`); else unverifiedList.push('Price');
+      if (extracted.mrp && extracted.mrp > 0) verifiedList.push(`MRP (₹${extracted.mrp})`); else unverifiedList.push('MRP');
+      if (extracted.cat) verifiedList.push(`Category (${extracted.cat})`); else unverifiedList.push('Category');
+      if (extracted.col) verifiedList.push(`Colour (${extracted.col})`); else unverifiedList.push('Colour');
+      if (extracted.sizes && extracted.sizes.length) verifiedList.push(`Sizes (${extracted.sizes.join(', ')})`); else unverifiedList.push('Sizes');
+      if (extracted.imgUrl) verifiedList.push('Image'); else unverifiedList.push('Image');
+      if (extracted.ret) verifiedList.push(`Retailer (${extracted.ret})`); else unverifiedList.push('Retailer');
 
       if (statusDiv && !extracted.requiresDirectUrl) {
         statusDiv.innerHTML = `
-          <div style="background:#E8F5E9;border:1px solid #A5D6A7;padding:10px 14px;border-radius:4px;color:#1B5E20;margin-top:6px">
-            <strong>✓ Successfully Extracted (${fieldsCount} fields populated)!</strong><br />
-            <span style="font-size:11.5px">Title, ${extracted.price > 0 ? `Price (₹${extracted.price}), ` : ''}Category (${esc(extracted.cat)}), and Retailer (${esc(extracted.ret)}) auto-filled. Original affiliate link is preserved as the customer shopping destination.</span>
+          <div style="background:var(--sf);border:1px solid var(--bd);border-left:4px solid var(--wn);padding:12px 14px;border-radius:4px;color:var(--tx);margin-top:8px;font-size:13px;line-height:1.5">
+            <div style="font-weight:700;color:var(--dp);margin-bottom:4px">
+              ${extracted.name ? `✓ Product Information Extracted (${verifiedList.length} verified fields)` : '⚠️ Partial / Unverified Link Response'}
+            </div>
+            <div class="mu" style="font-size:12px">
+              ${extracted.name ? 'Original affiliate link is safely preserved as the customer shopping destination.' : 'The retailer link did not provide full metadata. Your affiliate link is safely preserved in the Shopping Link field.'}
+            </div>
+            ${verifiedList.length ? `
+              <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px">
+                <span style="font-weight:600;color:var(--dp);width:100%">Verified &amp; Extracted:</span>
+                ${verifiedList.map(v => `<span style="background:var(--bl);color:var(--dp);padding:2px 8px;border-radius:3px;font-weight:500">${esc(v)}</span>`).join(' ')}
+              </div>
+            ` : ''}
+            ${unverifiedList.length ? `
+              <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px">
+                <span style="font-weight:600;color:var(--mu);width:100%">Manual Entry Needed:</span>
+                ${unverifiedList.map(m => `<span style="background:var(--bg);border:1px solid var(--bd);color:var(--mu);padding:2px 8px;border-radius:3px">${esc(m)}</span>`).join(' ')}
+              </div>
+            ` : ''}
           </div>
         `;
       }
       announce('Product information extracted and auto-filled');
     } catch (err: any) {
       if (statusDiv) {
-        statusDiv.innerHTML = `<span style="color:#C62828">Extraction error: ${esc(err?.message || 'Check link')}</span>`;
+        statusDiv.innerHTML = `<span style="color:var(--wn);font-weight:600">Extraction note: ${esc(err?.message || 'Check link')}</span>`;
       }
     } finally {
       btn.disabled = false;
@@ -4270,7 +4300,7 @@ document.addEventListener('click', async (e) => {
 
     if (!directUrlStr) {
       if (directStatusDiv) {
-        directStatusDiv.innerHTML = '<span style="color:#C62828;font-weight:600">Please paste a direct retailer product page URL first.</span>';
+        directStatusDiv.innerHTML = '<span style="color:var(--wn);font-weight:600">Please paste a direct retailer product page URL first.</span>';
       }
       return;
     }
@@ -4314,19 +4344,48 @@ document.addEventListener('click', async (e) => {
 
       priceInput?.dispatchEvent(new Event('input'));
 
+      const verifiedList: string[] = [];
+      const unverifiedList: string[] = [];
+
+      if (extracted.name) verifiedList.push('Title'); else unverifiedList.push('Title');
+      if (extracted.brand) verifiedList.push(`Brand (${extracted.brand})`); else unverifiedList.push('Brand');
+      if (extracted.price > 0) verifiedList.push(`Price (₹${extracted.price})`); else unverifiedList.push('Price');
+      if (extracted.mrp && extracted.mrp > 0) verifiedList.push(`MRP (₹${extracted.mrp})`); else unverifiedList.push('MRP');
+      if (extracted.cat) verifiedList.push(`Category (${extracted.cat})`); else unverifiedList.push('Category');
+      if (extracted.col) verifiedList.push(`Colour (${extracted.col})`); else unverifiedList.push('Colour');
+      if (extracted.sizes && extracted.sizes.length) verifiedList.push(`Sizes (${extracted.sizes.join(', ')})`); else unverifiedList.push('Sizes');
+      if (extracted.imgUrl) verifiedList.push('Image'); else unverifiedList.push('Image');
+      if (extracted.ret) verifiedList.push(`Retailer (${extracted.ret})`); else unverifiedList.push('Retailer');
+
       // CRITICAL: The Direct Product URL must NEVER overwrite the Shopping Link field (#p-affurl)
       if (directStatusDiv) {
         directStatusDiv.innerHTML = `
-          <div style="background:#E8F5E9;border:1px solid #A5D6A7;padding:10px 14px;border-radius:4px;color:#1B5E20;margin-top:6px">
-            <strong>✓ Extracted from Direct Product Page!</strong><br />
-            <span style="font-size:11.5px">Product details auto-filled. Your original affiliate link remains safely preserved in <em>Shopping Link (Affiliate URL)</em> as the customer destination. Review details below and click Save.</span>
+          <div style="background:var(--sf);border:1px solid var(--bd);border-left:4px solid var(--wn);padding:12px 14px;border-radius:4px;color:var(--tx);margin-top:8px;font-size:13px;line-height:1.5">
+            <div style="font-weight:700;color:var(--dp);margin-bottom:4px">
+              ✓ Extracted from Direct Product Page (${verifiedList.length} verified fields)
+            </div>
+            <div class="mu" style="font-size:12px">
+              Product details auto-filled. Your original affiliate link remains safely preserved in <em>Shopping Link (Affiliate URL)</em> as the customer destination. Review details below and click Save.
+            </div>
+            ${verifiedList.length ? `
+              <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px">
+                <span style="font-weight:600;color:var(--dp);width:100%">Verified &amp; Extracted:</span>
+                ${verifiedList.map(v => `<span style="background:var(--bl);color:var(--dp);padding:2px 8px;border-radius:3px;font-weight:500">${esc(v)}</span>`).join(' ')}
+              </div>
+            ` : ''}
+            ${unverifiedList.length ? `
+              <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px">
+                <span style="font-weight:600;color:var(--mu);width:100%">Manual Entry Needed:</span>
+                ${unverifiedList.map(m => `<span style="background:var(--bg);border:1px solid var(--bd);color:var(--mu);padding:2px 8px;border-radius:3px">${esc(m)}</span>`).join(' ')}
+              </div>
+            ` : ''}
           </div>
         `;
       }
       announce('Product information extracted from direct product page');
     } catch (err: any) {
       if (directStatusDiv) {
-        directStatusDiv.innerHTML = `<span style="color:#C62828">Direct extraction error: ${esc(err?.message || 'Check link')}</span>`;
+        directStatusDiv.innerHTML = `<span style="color:var(--wn);font-weight:600">Direct extraction note: ${esc(err?.message || 'Check link')}</span>`;
       }
     } finally {
       btn.disabled = false;
