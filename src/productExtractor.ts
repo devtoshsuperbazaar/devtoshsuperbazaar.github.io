@@ -1,3 +1,5 @@
+import { generateSafeProductSlug } from './productData';
+
 /**
  * Product Extractor for Devtosh SuperBazaar
  * Specialized for Meesho and universal fashion retailers
@@ -23,9 +25,49 @@ export interface ExtractedProduct {
   source: 'meesho' | 'url' | 'text' | 'combined';
   isAffiliate?: boolean;
   requiresDirectUrl?: boolean;
+  blocked?: boolean;
   resolvedDestination?: string;
   extId?: string;
   productId?: string;
+}
+
+export function isAlphanumericId(token: string): boolean {
+  if (!token) return false;
+  const s = token.trim();
+  if (s.includes(' ')) return false;
+  // Tokens like fvv0k9, 1kv4b, B08N5WRWNW, itmd0da018445c04, ext_id
+  if (/^[a-zA-Z0-9_-]{3,30}$/.test(s)) {
+    if (!/[aeiouAEIOU]/.test(s) || /^[a-z0-9]{4,15}$/.test(s) || /^[a-zA-Z]{1,4}[0-9]{1,6}[a-zA-Z0-9]*$/.test(s)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isForbiddenBrand(str: string): boolean {
+  if (!str) return true;
+  const s = str.trim().toLowerCase();
+  return (
+    s === 'https' ||
+    s === 'http' ||
+    s === 'www' ||
+    s === 'com' ||
+    s === 'in' ||
+    s === 'net' ||
+    s === 'org' ||
+    s === 'item' ||
+    s === 'product' ||
+    s === 'null' ||
+    s === 'undefined' ||
+    s.includes('.') ||
+    s.includes('/') ||
+    s.includes(':') ||
+    s === 'meesho' ||
+    s === 'amazon' ||
+    s === 'flipkart' ||
+    s === 'myntra' ||
+    s === 'ajio'
+  );
 }
 
 export function classifyCategory(text: string): string {
@@ -117,18 +159,13 @@ export function classifyCategory(text: string): string {
   if (t.includes('watch') || t.includes('wristwatch')) return 'Watches';
   if (t.includes('wallet') || t.includes('belt') || t.includes('cap') || t.includes('hat') || t.includes('backpack')) return 'Accessories';
 
-  // Universal Fallback
-  return 'Accessories & Lifestyle';
+  // No fabricated category fallback: if unclassified, return empty string
+  return '';
 }
 
 export function generateProductSlug(title: string): string {
-  return (title || 'item')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '') || 'product-item';
+  if (!title || !title.trim() || isAlphanumericId(title)) return '';
+  return generateSafeProductSlug(title);
 }
 
 export function parseMeeshoUrl(rawUrl: string): Partial<ExtractedProduct> | null {
@@ -145,8 +182,8 @@ export function parseMeeshoUrl(rawUrl: string): Partial<ExtractedProduct> | null
       const directUrlGuess = extId ? `https://www.meesho.com/s/p/${extId}` : '';
       return {
         name: '',
-        slug: extId ? `meesho-${extId}` : '',
-        brand: 'Meesho',
+        slug: '', // Never treat product code like meesho-fvv0k9 as slug
+        brand: '', // Never fabricate brand
         cat: '',
         ret: 'Meesho',
         retUrl: directUrlGuess || rawUrl.trim(),
@@ -169,7 +206,8 @@ export function parseMeeshoUrl(rawUrl: string): Partial<ExtractedProduct> | null
     if (match) {
       slugGuess = match[1];
       productCode = match[2];
-      if (slugGuess !== 's' && slugGuess !== 'products' && slugGuess.length > 2) {
+      // Only treat slugGuess as a title if it is a genuine descriptive slug, NEVER a code or 's'
+      if (slugGuess !== 's' && slugGuess !== 'products' && slugGuess.length > 2 && !isAlphanumericId(slugGuess)) {
         titleGuess = slugGuess
           .replace(/[-_]/g, ' ')
           .replace(/\b\w/g, c => c.toUpperCase())
@@ -178,19 +216,19 @@ export function parseMeeshoUrl(rawUrl: string): Partial<ExtractedProduct> | null
     } else {
       const segments = path.split('/').filter(Boolean);
       const last = segments[segments.length - 1] || '';
-      if (last && last !== 'p') {
+      if (last && last !== 'p' && !isAlphanumericId(last)) {
         titleGuess = last.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         slugGuess = last;
       }
     }
 
     const cat = titleGuess ? classifyCategory(titleGuess) : '';
-    const slug = titleGuess ? generateProductSlug(titleGuess) : '';
+    const slug = titleGuess ? generateSafeProductSlug(titleGuess) : '';
 
     return {
       name: titleGuess,
       slug,
-      brand: 'Meesho',
+      brand: '', // Unverified brand left empty
       cat,
       ret: 'Meesho',
       retUrl: u.origin + u.pathname,
@@ -216,22 +254,22 @@ export function parseAmazonUrl(rawUrl: string): Partial<ExtractedProduct> | null
     if (asinMatch) asin = asinMatch[1];
 
     const slugMatch = u.pathname.match(/\/([^/]+)\/(?:dp|gp\/product)/i);
-    if (slugMatch && slugMatch[1] && slugMatch[1] !== 'gp' && slugMatch[1] !== 'dp') {
+    if (slugMatch && slugMatch[1] && slugMatch[1] !== 'gp' && slugMatch[1] !== 'dp' && !isAlphanumericId(slugMatch[1])) {
       titleGuess = slugMatch[1]
         .replace(/[-_+]/g, ' ')
         .replace(/\b\w/g, c => c.toUpperCase())
         .trim();
     }
 
-    if (!titleGuess) titleGuess = 'Curated Amazon Find';
-    const cat = classifyCategory(titleGuess);
-    const slug = generateProductSlug(titleGuess);
+    if (isAlphanumericId(titleGuess)) titleGuess = '';
+    const cat = titleGuess ? classifyCategory(titleGuess) : '';
+    const slug = titleGuess ? generateSafeProductSlug(titleGuess) : '';
     const retUrl = asin ? `https://www.amazon.in/dp/${asin}` : (u.origin + u.pathname);
 
     return {
       name: titleGuess,
       slug,
-      brand: 'Amazon Partner',
+      brand: '',
       cat,
       ret: 'Amazon',
       retUrl,
@@ -249,27 +287,27 @@ export function parseFlipkartUrl(rawUrl: string): Partial<ExtractedProduct> | nu
 
     let titleGuess = '';
     const match = u.pathname.match(/\/([^/]+)\/p\//i);
-    if (match && match[1]) {
+    if (match && match[1] && !isAlphanumericId(match[1])) {
       titleGuess = match[1]
         .replace(/[-_+]/g, ' ')
         .replace(/\b\w/g, c => c.toUpperCase())
         .trim();
     } else {
       const segs = u.pathname.split('/').filter(Boolean);
-      if (segs.length > 0 && segs[0] !== 'p') {
+      if (segs.length > 0 && segs[0] !== 'p' && !isAlphanumericId(segs[0])) {
         titleGuess = segs[0].replace(/[-_+]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
       }
     }
 
-    if (!titleGuess) titleGuess = 'Curated Flipkart Find';
-    const cat = classifyCategory(titleGuess);
-    const slug = generateProductSlug(titleGuess);
+    if (isAlphanumericId(titleGuess)) titleGuess = '';
+    const cat = titleGuess ? classifyCategory(titleGuess) : '';
+    const slug = titleGuess ? generateSafeProductSlug(titleGuess) : '';
     const retUrl = u.origin + u.pathname;
 
     return {
       name: titleGuess,
       slug,
-      brand: 'Flipkart Choice',
+      brand: '',
       cat,
       ret: 'Flipkart',
       retUrl,
@@ -286,19 +324,24 @@ export function parseMyntraUrl(rawUrl: string): Partial<ExtractedProduct> | null
     if (!u.hostname.includes('myntra')) return null;
 
     let titleGuess = '';
-    let brandGuess = 'Myntra Fashion';
+    let brandGuess = '';
 
     const segs = u.pathname.split('/').filter(Boolean);
     if (segs.length >= 3) {
-      brandGuess = segs[0].replace(/[-_+]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
-      titleGuess = segs.slice(0, segs.length - 1).join(' ').replace(/[-_+]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
-    } else if (segs.length > 0) {
+      if (!isForbiddenBrand(segs[0])) {
+        brandGuess = segs[0].replace(/[-_+]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+      }
+      const rawTitle = segs.slice(0, segs.length - 1).join(' ');
+      if (!isAlphanumericId(rawTitle)) {
+        titleGuess = rawTitle.replace(/[-_+]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+      }
+    } else if (segs.length > 0 && !isAlphanumericId(segs[0])) {
       titleGuess = segs[0].replace(/[-_+]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
     }
 
-    if (!titleGuess) titleGuess = 'Curated Fashion';
-    const cat = classifyCategory(titleGuess);
-    const slug = generateProductSlug(titleGuess);
+    if (isAlphanumericId(titleGuess)) titleGuess = '';
+    const cat = titleGuess ? classifyCategory(titleGuess) : '';
+    const slug = titleGuess ? generateSafeProductSlug(titleGuess) : '';
     const retUrl = u.origin + u.pathname;
 
     return {
@@ -322,27 +365,27 @@ export function parseAjioUrl(rawUrl: string): Partial<ExtractedProduct> | null {
 
     let titleGuess = '';
     const match = u.pathname.match(/\/([^/]+)\/p\//i);
-    if (match && match[1]) {
+    if (match && match[1] && !isAlphanumericId(match[1])) {
       titleGuess = match[1]
         .replace(/[-_+]/g, ' ')
         .replace(/\b\w/g, c => c.toUpperCase())
         .trim();
     } else {
       const segs = u.pathname.split('/').filter(Boolean);
-      if (segs.length > 0) {
+      if (segs.length > 0 && !isAlphanumericId(segs[0])) {
         titleGuess = segs[0].replace(/[-_+]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
       }
     }
 
-    if (!titleGuess) titleGuess = 'Curated Ajio Style';
-    const cat = classifyCategory(titleGuess);
-    const slug = generateProductSlug(titleGuess);
+    if (isAlphanumericId(titleGuess)) titleGuess = '';
+    const cat = titleGuess ? classifyCategory(titleGuess) : '';
+    const slug = titleGuess ? generateSafeProductSlug(titleGuess) : '';
     const retUrl = u.origin + u.pathname;
 
     return {
       name: titleGuess,
       slug,
-      brand: 'Ajio Collection',
+      brand: '',
       cat,
       ret: 'Ajio',
       retUrl,
@@ -372,10 +415,23 @@ export function parseProductText(text: string): Partial<ExtractedProduct> {
   // 1. Name extraction
   const nameRegex = /(?:Name|Product Name|Title|Item)\s*[:\-]\s*([^\n\r]+)/i;
   const nameM = cleanText.match(nameRegex);
-  if (nameM && nameM[1].trim()) {
+  if (nameM && nameM[1].trim() && !isAlphanumericId(nameM[1].trim())) {
     result.name = nameM[1].trim();
   } else if (lines.length > 0 && !lines[0].includes(':') && lines[0].length < 100) {
-    result.name = lines[0];
+    const firstLine = lines[0].trim();
+    if (firstLine.length > 3 && !isAlphanumericId(firstLine) && !firstLine.startsWith('http') && !isForbiddenBrand(firstLine)) {
+      result.name = firstLine;
+    }
+  }
+
+  // 1b. Brand extraction
+  const brandRegex = /(?:Brand|Brand Name|Manufacturer|Seller)\s*[:\-]\s*([^\n\r]+)/i;
+  const brandM = cleanText.match(brandRegex);
+  if (brandM && brandM[1].trim()) {
+    const b = brandM[1].trim();
+    if (!isForbiddenBrand(b) && !isAlphanumericId(b)) {
+      result.brand = b;
+    }
   }
 
   // 2. Selling Price
@@ -397,25 +453,19 @@ export function parseProductText(text: string): Partial<ExtractedProduct> {
   // 4. Color / Colour
   const colRegex = /(?:Color|Colour)\s*[:\-]\s*([^\n\r]+)/i;
   const colM = cleanText.match(colRegex);
-  if (colM && colM[1].trim()) {
+  if (colM && colM[1].trim() && !isAlphanumericId(colM[1].trim())) {
     result.col = colM[1].trim();
   }
 
-  // 5. Sizes
+  // 5. Sizes (Only extract when explicitly labelled as sizes to avoid capturing product codes or affiliate numbers)
   const sizeRegex = /(?:Sizes?|Available Sizes?)\s*[:\-]\s*([^\n\r]+)/i;
   const sizeM = cleanText.match(sizeRegex);
   if (sizeM && sizeM[1].trim()) {
     const rawSizes = sizeM[1].split(/[,/|]/);
     const cleaned = rawSizes
       .map(s => s.replace(/\([^)]*\)/g, '').trim())
-      .filter(s => s.length > 0 && s.length <= 10);
+      .filter(s => s.length > 0 && s.length <= 10 && !isAlphanumericId(s));
     if (cleaned.length > 0) result.sizes = cleaned;
-  } else {
-    // Detect standard clothing sizes (S, M, L, XL, XXL, 30, 32, 34, 36) in lines
-    const sizeMatches = cleanText.match(/\b(XS|S|M|L|XL|XXL|3XL|28|30|32|34|36|38|40|42|44)\b/gi);
-    if (sizeMatches && sizeMatches.length > 0) {
-      result.sizes = Array.from(new Set(sizeMatches.map(s => s.toUpperCase())));
-    }
   }
 
   // 6. Fabric / Material
@@ -443,13 +493,13 @@ export function parseProductText(text: string): Partial<ExtractedProduct> {
 
   if (descParts.length > 0) {
     result.desc = descParts.join(' · ');
-  } else if (cleanText.length > 20 && cleanText.length < 500) {
+  } else if (cleanText.length > 20 && cleanText.length < 500 && !cleanText.includes('{')) {
     result.desc = cleanText;
   }
 
   if (result.name) {
     result.cat = classifyCategory(result.name);
-    result.slug = generateProductSlug(result.name);
+    result.slug = generateSafeProductSlug(result.name);
   }
 
   return result;
@@ -474,8 +524,8 @@ export async function extractProductDetails(
 
   let combined: ExtractedProduct = {
     name: textData.name || urlData.name || '',
-    slug: textData.slug || urlData.slug || (textData.name || urlData.name ? generateProductSlug(textData.name || urlData.name!) : ''),
-    brand: textData.brand || urlData.brand || (urlData.ret || ''),
+    slug: textData.slug || urlData.slug || (textData.name || urlData.name ? generateSafeProductSlug(textData.name || urlData.name!) : ''),
+    brand: textData.brand || urlData.brand || '', // NEVER assign generic retailer name or 'Https'
     cat: textData.cat || urlData.cat || (textData.name || urlData.name ? classifyCategory(textData.name || urlData.name!) : ''),
     price: textData.price || urlData.price || 0,
     mrp: textData.mrp || urlData.mrp || 0,
@@ -509,12 +559,22 @@ export async function extractProductDetails(
           const s = json.product;
           combined = {
             ...combined,
-            ...Object.fromEntries(Object.entries(s).filter(([_, v]) => v !== undefined && v !== null && v !== ''))
+            ...Object.fromEntries(
+              Object.entries(s).filter(([k, v]) => {
+                if (v === undefined || v === null || v === '') return false;
+                if (k === 'brand' && isForbiddenBrand(String(v))) return false;
+                if (k === 'name' && isAlphanumericId(String(v))) return false;
+                return true;
+              })
+            )
           };
           if (json.resolvedUrl) {
             combined.resolvedDestination = json.resolvedUrl;
           }
           combined.requiresDirectUrl = false;
+        } else if (json && json.blocked) {
+          combined.blocked = true;
+          combined.requiresDirectUrl = true;
         } else if (json && json.requiresDirectUrl) {
           combined.requiresDirectUrl = true;
         }
@@ -524,24 +584,26 @@ export async function extractProductDetails(
         }
       }
     } catch (e) {
-      console.warn('Backend proxy extraction failed, using robust client-side heuristics:', e);
+      console.warn('Backend proxy extraction failed:', e);
       if (urlData.isAffiliate && !isDirectExtraction) {
         combined.requiresDirectUrl = true;
       }
     }
   }
 
-  // Preserve the original affiliate link if Stage A
+  // Preserve the original affiliate link strictly
   if (!isDirectExtraction && url) {
     combined.affUrl = url;
   }
 
-  // Ensure slug is generated if name is present
-  if (combined.name && (!combined.slug || combined.slug === 'item' || combined.slug === 'product-item')) {
-    combined.slug = generateProductSlug(combined.name);
+  // Ensure slug is derived only from genuine product name
+  if (combined.name && !isAlphanumericId(combined.name)) {
+    combined.slug = generateSafeProductSlug(combined.name);
+  } else if (!combined.name) {
+    combined.slug = '';
   }
 
-  // Ensure category is classified if name is present
+  // Classify category only if verified name is present
   if (combined.name && !combined.cat) {
     combined.cat = classifyCategory(combined.name);
   }
@@ -553,16 +615,21 @@ function parseGenericUrl(rawUrl: string): Partial<ExtractedProduct> {
   try {
     const u = new URL(rawUrl.trim());
     const hostParts = u.hostname.replace('www.', '').split('.');
-    const retailer = hostParts[0].charAt(0).toUpperCase() + hostParts[0].slice(1);
+    let retailer = hostParts[0].charAt(0).toUpperCase() + hostParts[0].slice(1);
+    if (isForbiddenBrand(retailer)) {
+      retailer = 'Partner Retailer';
+    }
     const pathSegments = u.pathname.split('/').filter(Boolean);
-    const last = pathSegments[pathSegments.length - 1] || 'item';
-    const cleanLast = last.replace(/\.html?$/, '').replace(/[-_]/g, ' ');
-    const title = cleanLast.length > 2 && cleanLast !== 'item' ? cleanLast.replace(/\b\w/g, c => c.toUpperCase()) : '';
+    const last = pathSegments[pathSegments.length - 1] || '';
+    const cleanLast = last.replace(/\.html?$/, '').replace(/[-_]/g, ' ').trim();
+    const title = (!isAlphanumericId(cleanLast) && cleanLast.length > 3 && cleanLast !== 'item' && !cleanLast.startsWith('http'))
+      ? cleanLast.replace(/\b\w/g, c => c.toUpperCase())
+      : '';
     const cat = title ? classifyCategory(title) : '';
     return {
       name: title,
-      slug: title ? generateProductSlug(title) : '',
-      brand: retailer,
+      slug: title ? generateSafeProductSlug(title) : '',
+      brand: '', // Never set brand to retailer or protocol
       cat,
       ret: retailer,
       retUrl: rawUrl.trim(),
