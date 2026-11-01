@@ -93,7 +93,6 @@ export default defineConfig(() => {
 
                       if (isMeesho) {
                         product.ret = 'Meesho';
-                        product.brand = product.brand || 'Meesho';
                         if (parsed.pathname.includes('/af_invite')) {
                           isAffiliateInvite = true;
                           extId = parsed.searchParams.get('ext_id') || '';
@@ -105,55 +104,53 @@ export default defineConfig(() => {
                         } else {
                           product.retUrl = parsed.origin + parsed.pathname;
                           const m = parsed.pathname.match(/\/([^/]+)\/p\/([a-zA-Z0-9_-]+)/);
-                          if (m && m[1] !== 's' && m[1] !== 'products') {
+                          if (m && m[1] !== 's' && m[1] !== 'products' && m[1].includes('-') && m[1].length > 3) {
                             if (!product.name) {
                               product.name = m[1].replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
                             }
                             if (!product.slug) {
-                              product.slug = m[1].toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                              product.slug = m[1].toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 65);
                             }
                           }
                         }
                       } else if (isAmazon) {
                         product.ret = 'Amazon';
-                        product.brand = product.brand || 'Amazon Partner';
                         const asinMatch = parsed.pathname.match(/\/(?:dp|gp\/product)\/([a-zA-Z0-9]{10})/i);
                         product.retUrl = asinMatch ? `https://www.amazon.in/dp/${asinMatch[1]}` : (parsed.origin + parsed.pathname);
                         fetchTarget = product.retUrl;
                         const slugMatch = parsed.pathname.match(/\/([^/]+)\/(?:dp|gp\/product)/i);
-                        if (slugMatch && slugMatch[1] && slugMatch[1] !== 'gp' && slugMatch[1] !== 'dp') {
+                        if (slugMatch && slugMatch[1] && slugMatch[1] !== 'gp' && slugMatch[1] !== 'dp' && slugMatch[1].includes('-')) {
                           if (!product.name) product.name = slugMatch[1].replace(/[-_+]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
                         }
                       } else if (isFlipkart) {
                         product.ret = 'Flipkart';
-                        product.brand = product.brand || 'Flipkart Choice';
                         product.retUrl = parsed.origin + parsed.pathname;
                         fetchTarget = product.retUrl;
                         const m = parsed.pathname.match(/\/([^/]+)\/p\//i);
-                        if (m && m[1]) {
+                        if (m && m[1] && m[1].includes('-')) {
                           if (!product.name) product.name = m[1].replace(/[-_+]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
                         }
                       } else if (isMyntra) {
                         product.ret = 'Myntra';
-                        product.brand = product.brand || 'Myntra Fashion';
                         product.retUrl = parsed.origin + parsed.pathname;
                         fetchTarget = product.retUrl;
                         const segs = parsed.pathname.split('/').filter(Boolean);
-                        if (segs.length >= 2 && !product.name) {
+                        if (segs.length >= 2 && !product.name && segs[segs.length - 2].includes('-')) {
                           product.name = segs[segs.length - 2].replace(/[-_+]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
                         }
                       } else if (isAjio) {
                         product.ret = 'Ajio';
-                        product.brand = product.brand || 'Ajio Collection';
                         product.retUrl = parsed.origin + parsed.pathname;
                         fetchTarget = product.retUrl;
                         const m = parsed.pathname.match(/\/([^/]+)\/p\//i);
-                        if (m && m[1] && !product.name) {
+                        if (m && m[1] && m[1].includes('-') && !product.name) {
                           product.name = m[1].replace(/[-_+]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim();
                         }
                       } else {
                         const hostParts = parsed.hostname.replace('www.', '').split('.');
-                        product.ret = hostParts[0].charAt(0).toUpperCase() + hostParts[0].slice(1);
+                        let rName = hostParts[0].charAt(0).toUpperCase() + hostParts[0].slice(1);
+                        if (rName.toLowerCase() === 'https' || rName.toLowerCase() === 'http') rName = 'Partner Retailer';
+                        product.ret = rName;
                         product.retUrl = url.trim();
                       }
 
@@ -196,7 +193,7 @@ export default defineConfig(() => {
                             product.desc = ogDesc[1].trim();
                           }
 
-                          // Extract price from Schema.org JSON-LD
+                          // Extract price & brand from Schema.org JSON-LD
                           const jsonLdMatches = html.match(/<script\s+type=["']application\/ld\+json["']>([\s\S]*?)<\/script>/gi);
                           if (jsonLdMatches) {
                             for (const tag of jsonLdMatches) {
@@ -206,6 +203,12 @@ export default defineConfig(() => {
                                 const item = Array.isArray(parsedLd) ? parsedLd[0] : parsedLd;
                                 if (item && (item['@type'] === 'Product' || item.offers)) {
                                   if (item.name && !product.name) product.name = item.name;
+                                  if (item.brand) {
+                                    const bName = typeof item.brand === 'string' ? item.brand : item.brand.name;
+                                    if (bName && typeof bName === 'string' && !['https', 'http'].includes(bName.toLowerCase())) {
+                                      product.brand = bName.trim();
+                                    }
+                                  }
                                   if (item.image && !product.imgUrl) {
                                     product.imgUrl = Array.isArray(item.image) ? item.image[0] : (item.image.url || item.image);
                                   }
@@ -222,14 +225,23 @@ export default defineConfig(() => {
                         clearTimeout(timeout);
                       }
 
-                      // If this is an affiliate invite link and we could not extract product details from the target
-                      if (isAffiliateInvite && !fetchSuccess && !product.name) {
+                      // Sanitize any invalid values
+                      if (product.brand && (product.brand.toLowerCase() === 'https' || product.brand.toLowerCase() === 'http')) {
+                        delete product.brand;
+                      }
+                      if (product.name && !product.name.includes(' ') && /^[a-z0-9_-]{3,20}$/i.test(product.name)) {
+                        delete product.name;
+                      }
+
+                      // If page was blocked or details could not be accessed
+                      if (!fetchSuccess && !product.name) {
                         res.setHeader('Content-Type', 'application/json');
                         res.end(JSON.stringify({
                           success: false,
+                          blocked: true,
                           requiresDirectUrl: true,
-                          message: "We couldn't automatically access the product page through this affiliate link. Please paste the direct product URL so we can extract the product information. Your affiliate link will remain saved as the customer shopping link.",
-                          retailer: 'Meesho',
+                          message: "The retailer server blocked automated access. Please paste the direct product URL or copy-paste product details into the form.",
+                          retailer: product.ret,
                           extId,
                           pId
                         }));
