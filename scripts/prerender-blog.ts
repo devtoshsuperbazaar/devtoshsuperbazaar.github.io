@@ -12,6 +12,8 @@ import {
   isElectronicsProduct,
   isAccessoriesProduct,
   isHomeLivingProduct,
+  isNewProduct,
+  getSafeProductSlug,
   isValidProductVideoUrl
 } from '../src/productData.ts';
 import { Article, formatBlogDate, calculateReadTime } from '../src/blogData.ts';
@@ -417,7 +419,8 @@ function renderFaqsHtml(
 }
 
 function renderStaticProductCard(p: Product, isLcp: boolean = false, isSubordinateHeading: boolean = false): string {
-  const u = `/product/${p.slug}/`;
+  const safeSlug = getSafeProductSlug(p.slug, p.id, p.name);
+  const u = `/product/${safeSlug}/`;
   const d = disc(p);
   const tint = p.tint || '#EADFD8';
   const g = p.g || '#9DB7CF';
@@ -431,7 +434,7 @@ function renderStaticProductCard(p: Product, isLcp: boolean = false, isSubordina
   const headingTag = isSubordinateHeading ? 'h3' : 'h2';
 
   return `
-    <article class="pc" id="card-${p.slug}">
+    <article class="pc" id="card-${safeSlug}">
       <a href="${u}" class="ph" style="--t:${tint};--g:${g};background:#fff" aria-label="View product details for ${esc(p.name)}">
         ${p.imgUrl ? `
           <img src="${esc(p.imgUrl)}" alt="${esc(p.name)}" ${isLcp ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"'} width="400" height="500" style="width:100%;height:100%;object-fit:cover" />
@@ -439,7 +442,7 @@ function renderStaticProductCard(p: Product, isLcp: boolean = false, isSubordina
           <svg viewBox="0 0 100 125" role="img" aria-label="Illustration for ${esc(p.name)}"><use href="#${sh}"/></svg>
         `}
       </a>
-      <button class="wl" id="wl-${p.slug}" data-a="wl" data-s="${p.slug}" aria-label="Save ${esc(p.name)} to saved items">
+      <button class="wl" id="wl-${safeSlug}" data-a="wl" data-s="${safeSlug}" aria-label="Save ${esc(p.name)} to saved items">
         <svg aria-hidden="true" viewBox="0 0 24 24"><use href="#hrt"/></svg>
       </button>
       <div class="pi">
@@ -475,7 +478,9 @@ export async function prerender() {
   ];
 
   function writeDocument(subPath: string, htmlContent: string) {
-    const fullDir = path.resolve(DIST_DIR, subPath);
+    const rawSegments = subPath.split('/').filter(Boolean);
+    const safeSegments = rawSegments.map(seg => (seg.length > 65 ? getSafeProductSlug(seg) : seg));
+    const fullDir = path.resolve(DIST_DIR, ...safeSegments);
     if (!fs.existsSync(fullDir)) {
       fs.mkdirSync(fullDir, { recursive: true });
     }
@@ -677,7 +682,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
     else if (cat.slug === 'mobiles' || cat.slug === 'electronics') items = liveProducts.filter(isElectronicsProduct);
     else if (cat.slug === 'accessories') items = liveProducts.filter(isAccessoriesProduct);
     else if (cat.slug === 'home-living') items = liveProducts.filter(isHomeLivingProduct);
-    else if (cat.slug === 'new') items = [...liveProducts].sort((a, b) => (b.added || 0) - (a.added || 0));
+    else if (cat.slug === 'new') items = liveProducts.filter(isNewProduct).sort((a, b) => (b.added || 0) - (a.added || 0));
     else items = liveProducts;
 
     const canonicalUrl = `${BASE_ORIGIN}/category/${cat.slug}/`;
@@ -697,7 +702,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
         'itemListElement': items.map((p, idx) => ({
           '@type': 'ListItem',
           'position': idx + 1,
-          'url': `${BASE_ORIGIN}/product/${p.slug}/`,
+          'url': `${BASE_ORIGIN}/product/${getSafeProductSlug(p.slug, p.id, p.name)}/`,
           'name': p.name
         }))
       }
@@ -759,22 +764,24 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
   // Only live products from Cloud Firestore are prerendered (zero demo fallbacks)
   for (const lp of liveProducts) {
-    if (lp.slug && !seenProductSlugs.has(lp.slug)) {
-      seenProductSlugs.add(lp.slug);
+    const safeSlug = getSafeProductSlug(lp.slug, lp.id, lp.name);
+    if (safeSlug && !seenProductSlugs.has(safeSlug)) {
+      seenProductSlugs.add(safeSlug);
       allProductsToPrerender.push(lp);
     }
   }
 
   console.log(`[SSG Prerender] Prerendering ${allProductsToPrerender.length} single product pages from Cloud Firestore...`);
   for (const p of allProductsToPrerender) {
-    const canonicalUrl = `${BASE_ORIGIN}/product/${p.slug}/`;
+    const safeSlug = getSafeProductSlug(p.slug, p.id, p.name);
+    const canonicalUrl = `${BASE_ORIGIN}/product/${safeSlug}/`;
     const pageTitle = `${p.name} — Buy Online at Best Price | DevTosh Superbazaar`;
     const pageDesc = `Discover ${p.name} by ${p.brand} at ₹${p.price} (MRP ₹${p.mrp || p.price}). ${p.desc}`;
     const ogImg = p.imgUrl || `${BASE_ORIGIN}/favicon-48x48.png`;
     const d = disc(p);
 
     const related = allProductsToPrerender
-      .filter(x => x.slug !== p.slug)
+      .filter(x => getSafeProductSlug(x.slug, x.id, x.name) !== safeSlug)
       .sort((a, b) => (b.cat === p.cat ? 1 : 0) - (a.cat === p.cat ? 1 : 0))
       .slice(0, 4);
 
@@ -925,7 +932,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
       mainHtml
     });
 
-    writeDocument(`product/${p.slug}`, prodHtml);
+    writeDocument(`product/${safeSlug}`, prodHtml);
 
     const lastModDate = p.updatedAt || p.createdAt;
     let prodLastmodStr: string | undefined = undefined;
