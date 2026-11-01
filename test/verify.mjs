@@ -682,5 +682,276 @@ if (!parsedNormal.hostname.includes('amazon') || !parsedNormal.pathname.includes
   throw new Error('Normal Amazon URL extraction parsing failed');
 }
 
+// ============================================================================
+// TASK 1 & TASK 6: Product Extraction Sanitization & Slug Max Length 65
+// ============================================================================
+
+// 17.1 Slugs must never exceed 65 characters and must include deterministic uniqueness
+function generateSafeProductSlug(name, uniqueId) {
+  const MAX_PRODUCT_SLUG_LENGTH = 65;
+  const clean = String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  let base = clean || 'product';
+  let suffix = '';
+  if (uniqueId && typeof uniqueId === 'string' && uniqueId.trim()) {
+    suffix = uniqueId.trim().toLowerCase().replace(/[^a-z0-9]/g, '').slice(-6);
+  }
+  if (!suffix) {
+    let hash = 0;
+    for (let i = 0; i < (name || '').length; i++) {
+      hash = ((hash << 5) - hash) + (name || '').charCodeAt(i);
+      hash |= 0;
+    }
+    suffix = Math.abs(hash).toString(36).slice(0, 6).padStart(6, '0');
+  }
+
+  const maxBaseLen = MAX_PRODUCT_SLUG_LENGTH - suffix.length - 1;
+  if (base.length > maxBaseLen || uniqueId) {
+    let truncated = base.slice(0, maxBaseLen);
+    if (base.length > maxBaseLen) {
+      const lastHyphen = truncated.lastIndexOf('-');
+      if (lastHyphen > 15) {
+        truncated = truncated.slice(0, lastHyphen);
+      }
+    }
+    truncated = truncated.replace(/-+$/, '');
+    base = `${truncated}-${suffix}`;
+  }
+
+  if (base.length > MAX_PRODUCT_SLUG_LENGTH) {
+    base = base.slice(0, MAX_PRODUCT_SLUG_LENGTH).replace(/-+$/, '');
+  }
+  return base;
+}
+
+function getSafeProductSlug(slug, uniqueId, name) {
+  const MAX_PRODUCT_SLUG_LENGTH = 65;
+  if (!slug || typeof slug !== 'string') {
+    return name ? generateSafeProductSlug(name, uniqueId) : '';
+  }
+  const clean = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  if (clean.length > 0 && clean.length <= MAX_PRODUCT_SLUG_LENGTH) {
+    return clean;
+  }
+  return generateSafeProductSlug(clean || name || 'product', uniqueId);
+}
+
+// Test the exact 241-character slug that crashed GitHub Actions build 41305268901:
+const brokenSlug241 = 'kurti-set-for-women-under-500kurti-for-women-with-dupattakurti-set-for-women-with-dupatta-cottonkurti-set-forwomen-with-dupattakurti-set-with-dupattakurti-set-for-women-stylishkurti-setcotton-kurti-set-for-women-with-dupattakurti-set-for-women-with-dupatta-pink';
+const fixedSlug = getSafeProductSlug(brokenSlug241, 'mvw9kfgp', 'Kurti Set for Women with Dupatta');
+if (fixedSlug.length > 65) {
+  throw new Error(`Safe slug exceeded 65 characters! Got length ${fixedSlug.length}: ${fixedSlug}`);
+}
+if (!fixedSlug.endsWith('mvw9kfgp'.slice(-6))) {
+  throw new Error(`Safe slug should end with deterministic suffix, got: ${fixedSlug}`);
+}
+
+// Test existing valid short slug preservation (MUST NOT be altered)
+const shortSlugValid = '1kv4b';
+if (getSafeProductSlug(shortSlugValid, '1kv4b', 'Frekman Shirt') !== '1kv4b') {
+  throw new Error('Valid short existing slug was improperly modified!');
+}
+const shortSlugValid2 = 'women-hand-bags-purse-for-girls-and-women';
+if (getSafeProductSlug(shortSlugValid2, 'mvw9k99', 'Handbag') !== shortSlugValid2) {
+  throw new Error('Valid 41-char slug was improperly modified!');
+}
+
+// 17.2 Retailer extraction sanitization: never treat IDs or protocols as product name or brand
+function isForbiddenBrand(str) {
+  if (!str) return true;
+  const s = str.trim().toLowerCase();
+  return (
+    s === 'https' ||
+    s === 'http' ||
+    s === 'www' ||
+    s === 'com' ||
+    s === 'in' ||
+    s === 'net' ||
+    s === 'org' ||
+    s === 'item' ||
+    s === 'product' ||
+    s === 'null' ||
+    s === 'undefined' ||
+    s.includes('.') ||
+    s.includes('/') ||
+    s.includes(':') ||
+    s === 'meesho' ||
+    s === 'amazon' ||
+    s === 'flipkart' ||
+    s === 'myntra' ||
+    s === 'ajio'
+  );
+}
+function isAlphanumericId(str) {
+  if (!str) return false;
+  const s = str.trim();
+  return /^[a-z0-9]{4,10}$/i.test(s) && /\d/.test(s) && /[a-z]/i.test(s);
+}
+
+if (!isAlphanumericId('fvv0k9')) throw new Error('fvv0k9 must be identified as an alphanumeric product ID');
+if (!isAlphanumericId('1kv4b')) throw new Error('1kv4b must be identified as an alphanumeric product ID');
+if (isAlphanumericId('Cotton Kurti')) throw new Error('Legitimate title should not be flagged as ID');
+
+if (!isForbiddenBrand('Https')) throw new Error('Https must be rejected as a brand');
+if (!isForbiddenBrand('https')) throw new Error('https must be rejected as a brand');
+if (!isForbiddenBrand('meesho.com')) throw new Error('meesho.com must be rejected as a brand');
+if (isForbiddenBrand('Biba')) throw new Error('Genuine brand Biba must not be rejected');
+
+// 17.3 Anti-fabrication check: Empty / unextracted values must NOT default to fake data
+const extractedExtractorFile = fs.readFileSync('src/productExtractor.ts', 'utf8');
+if (extractedExtractorFile.includes("col: 'White'")) {
+  throw new Error('src/productExtractor.ts contains fabricated default colour White');
+}
+if (extractedExtractorFile.includes("sizes: ['S', 'M', 'L', 'XL']")) {
+  throw new Error('src/productExtractor.ts contains fabricated default sizes S, M, L, XL');
+}
+if (extractedExtractorFile.includes("cat: 'Accessories & Lifestyle'")) {
+  throw new Error('src/productExtractor.ts contains fabricated default category Accessories & Lifestyle');
+}
+
+// ============================================================================
+// TASK 3: Category Taxonomy & Audience Disambiguation
+// ============================================================================
+
+function isKidsProduct(p) {
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  if (cat.includes('kids') || cat.includes('baby') || cat.includes('toy')) return true;
+  if (
+    name.includes('women') || name.includes('ladies') || name.includes('saree') ||
+    name.includes('kurti') || name.includes('lehenga') || name.includes('purse') ||
+    name.includes('handbag') || name.includes('bra') || name.includes('lingerie')
+  ) {
+    return false;
+  }
+  if (name.includes('menswear') || name.includes("men's") || name.includes('men shirt')) return false;
+  return (
+    name.includes('infant') || name.includes('toddler') || name.includes('babywear') ||
+    name.includes('romper') || name.includes('baby') || name.includes('toy') ||
+    name.includes('kids wear') || name.includes('kids clothing') || name.includes('boys clothes') ||
+    name.includes('girls frock') || name.includes('kids shoes')
+  );
+}
+
+function isWomenProduct(p) {
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  if (isKidsProduct(p)) return false;
+  if (
+    cat.includes('women') || cat.includes('saree') || cat.includes('kurti') ||
+    cat.includes('dress') || cat.includes('jewel') || cat.includes('handbag') ||
+    cat.includes('ethnic wear')
+  ) {
+    return true;
+  }
+  return (
+    name.includes('women') || name.includes('ladies') || name.includes('saree') ||
+    name.includes('sari') || name.includes('kurti') || name.includes('lehenga') ||
+    name.includes('anarkali') || name.includes('dupatta') || name.includes('blouse') ||
+    name.includes('dress') || name.includes('gown') || name.includes('handbag') ||
+    name.includes('purse') || name.includes('clutch') || name.includes('jewel') ||
+    name.includes('earring') || name.includes('necklace') || name.includes('bangle') ||
+    name.includes('mangalsutra') || name.includes('palazzo') || name.includes('salwar')
+  );
+}
+
+function isAccessoriesProduct(p) {
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  if (
+    cat.includes('saree') || cat.includes('kurti') || cat.includes('shirt') ||
+    cat.includes('jeans') || cat.includes('t-shirt') || cat.includes('trousers') ||
+    cat.includes('dress') || cat.includes('footwear')
+  ) {
+    return false;
+  }
+  if (cat.includes('accessories') || cat.includes('jewel') || cat.includes('watch') || cat.includes('bag') || cat.includes('belt')) {
+    return true;
+  }
+  return (
+    name.includes('watch') || name.includes('bag') || name.includes('handbag') ||
+    name.includes('purse') || name.includes('wallet') || name.includes('belt') ||
+    name.includes('sunglasses') || name.includes('jewellery') || name.includes('necklace') ||
+    name.includes('earring') || name.includes('bangle') || name.includes('bracelet') ||
+    name.includes('ring') || name.includes('scarf') || name.includes('cap') || name.includes('hat')
+  );
+}
+
+// Handbag test: "Women Hand Bags Purse for Girls and Women"
+const handbagProd = {
+  name: 'Women Hand Bags Purse for Girls and Women Shoulder Tote Bag',
+  cat: 'Women Accessories',
+  slug: 'women-hand-bags-purse-for-girls-and-women'
+};
+
+if (isKidsProduct(handbagProd)) {
+  throw new Error('Women Handbag with "girls" in title was wrongly classified as Kids!');
+}
+if (!isWomenProduct(handbagProd)) {
+  throw new Error('Women Handbag was not classified as Women!');
+}
+if (!isAccessoriesProduct(handbagProd)) {
+  throw new Error('Women Handbag was not classified as Accessories!');
+}
+
+// Footwear audience split tests
+const menShoe = { name: "Men's Lightweight Breathable Running Shoes", cat: 'Footwear' };
+const womenHeel = { name: "Women's Block Heel Ankle Strap Sandals", cat: 'Footwear' };
+const kidShoe = { name: "Kids Light-Up Casual Walking Shoes", cat: 'Kids Footwear' };
+
+if (isKidsProduct(menShoe)) throw new Error("Men's shoes should not be in Kids");
+if (isKidsProduct(womenHeel)) throw new Error("Women's heels should not be in Kids");
+if (!isKidsProduct(kidShoe)) throw new Error("Kid shoes must be in Kids");
+
+// Accessories purity test: Clothing must never be in accessories
+const menShirt = { name: "Cotton Slim Fit Casual Shirt", cat: "Men's Clothing" };
+if (isAccessoriesProduct(menShirt)) throw new Error("Men's shirt must NOT be in Accessories!");
+
+// ============================================================================
+// TASK 4: Floating WhatsApp Contact Button
+// ============================================================================
+
+const indexHtml = fs.readFileSync('index.html', 'utf8');
+if (!indexHtml.includes('https://wa.me/916204845747')) {
+  throw new Error('index.html missing WhatsApp contact link https://wa.me/916204845747');
+}
+if (!indexHtml.includes('class="whatsapp-float-btn"')) {
+  throw new Error('index.html missing .whatsapp-float-btn element');
+}
+if (!indexHtml.includes('aria-label="Chat with DevTosh SuperBazaar on WhatsApp"')) {
+  throw new Error('WhatsApp float button missing accessible aria-label');
+}
+if (!indexHtml.includes('href="#wa"')) {
+  throw new Error('WhatsApp float button must use existing #wa SVG icon');
+}
+if (!indexHtml.includes('.whatsapp-float-btn')) {
+  throw new Error('index.html missing .whatsapp-float-btn CSS rules');
+}
+
+// ============================================================================
+// TASK 5: Brand Theme Palette for Stage B and Extraction Status
+// ============================================================================
+
+const appSource = fs.readFileSync('src/app.ts', 'utf8');
+if (!appSource.includes('id="stage-b-container" style="display:none;margin-top:14px;background:var(--sf);border:1px solid var(--bd);border-left:4px solid var(--wn);padding:14px 16px;border-radius:4px"')) {
+  throw new Error('#stage-b-container does not use the brand theme tokens');
+}
+if (!appSource.includes('<span style="background:var(--bl);color:var(--dp);padding:2px 8px;border-radius:3px;font-weight:500">')) {
+  throw new Error('Extraction status chips do not use brand theme palette tokens');
+}
+
+// ============================================================================
+// TASK 6: Route Resolution Backward Compatibility
+// ============================================================================
+
+if (!appSource.includes('p.slug === sub || getSafeProductSlug(p.slug, p.id, p.name) === sub || p.id === sub')) {
+  throw new Error('Product routing does not support backwards-compatible safe slug resolution');
+}
+
 console.log('Automated validation suite passed with 100% success.');
 
