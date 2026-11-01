@@ -140,83 +140,298 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
   }
 ];
 
+export const MAX_PRODUCT_SLUG_LENGTH = 65;
+
+/**
+ * Generates a URL-safe, clean product slug capped at exactly 65 characters,
+ * with deterministic collision avoidance. Never uses raw product IDs or arbitrary fragments.
+ */
+export function generateSafeProductSlug(name: string, uniqueId?: string): string {
+  if (!name || typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+
+  // 1. Normalize: lowercase, remove accents, replace non-alphanumeric with hyphens
+  let base = trimmed
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  if (!base) return '';
+
+  // If base already fits within 65 characters and no uniqueId suffix is requested
+  if (base.length <= MAX_PRODUCT_SLUG_LENGTH && !uniqueId) {
+    return base;
+  }
+
+  // 2. Deterministic suffix if needed
+  let suffix = '';
+  if (uniqueId) {
+    const cleanId = uniqueId.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    suffix = cleanId.slice(-6).padStart(6, '0');
+  } else {
+    let hash = 0;
+    for (let i = 0; i < trimmed.length; i++) {
+      hash = ((hash << 5) - hash) + trimmed.charCodeAt(i);
+      hash |= 0;
+    }
+    suffix = Math.abs(hash).toString(36).padStart(6, '0').slice(0, 6);
+  }
+
+  // If base length exceeds 65 or uniqueId provided
+  if (base.length > MAX_PRODUCT_SLUG_LENGTH || uniqueId) {
+    const maxBaseLen = MAX_PRODUCT_SLUG_LENGTH - (suffix.length + 1); // 65 - 7 = 58
+    let truncated = base.slice(0, maxBaseLen);
+    if (base.length > maxBaseLen) {
+      const lastHyphen = truncated.lastIndexOf('-');
+      if (lastHyphen > 20) {
+        truncated = truncated.slice(0, lastHyphen);
+      }
+    }
+    truncated = truncated.replace(/-+$/, '');
+    base = `${truncated}-${suffix}`;
+  }
+
+  if (base.length > MAX_PRODUCT_SLUG_LENGTH) {
+    base = base.slice(0, MAX_PRODUCT_SLUG_LENGTH).replace(/-+$/, '');
+  }
+
+  return base;
+}
+
+/**
+ * Returns a backward-compatible, filesystem-safe slug for any product.
+ * Preserves existing short, valid published slugs (<= 65 chars) without alteration.
+ * If an existing slug exceeds 65 characters, it safely normalizes it within 65 characters.
+ */
+export function getSafeProductSlug(slug?: string, uniqueId?: string, name?: string): string {
+  if (!slug || typeof slug !== 'string') {
+    return name ? generateSafeProductSlug(name, uniqueId) : '';
+  }
+  const clean = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  if (clean.length > 0 && clean.length <= MAX_PRODUCT_SLUG_LENGTH) {
+    return clean;
+  }
+  return generateSafeProductSlug(clean || name || 'product', uniqueId);
+}
+
 export const DEMO_PRODUCTS: Product[] = [];
 
-// Department and Category matchers
+// ============================================================================
+// Department and Category matchers (Strict taxonomy, zero broad keyword leaks)
+// ============================================================================
+
 export function isElectronicsProduct(p: Product): boolean {
-  const t = `${p.cat || ''} ${p.name || ''} ${p.desc || ''}`.toLowerCase();
-  return t.includes('holder') || t.includes('mount') || t.includes('stand') ||
-         t.includes('mobile') || t.includes('smartphone') || t.includes('phone') ||
-         t.includes('earbud') || t.includes('earphone') || t.includes('headphone') ||
-         t.includes('neckband') || t.includes('smartwatch') || t.includes('smart watch') ||
-         t.includes('charger') || t.includes('power bank') || t.includes('data cable') ||
-         t.includes('usb') || t.includes('speaker') || t.includes('bluetooth') ||
-         t.includes('gadget') || (p.cat || '').toLowerCase().includes('electronic');
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  if (
+    cat.includes('mobile holders') || cat.includes('mount') || cat.includes('electronics') ||
+    cat.includes('smartphone') || cat.includes('audio') || cat.includes('smartwatch')
+  ) {
+    return true;
+  }
+  return name.includes('holder') || name.includes('mount') || name.includes('stand') ||
+         name.includes('tripod') || name.includes('earbud') || name.includes('earphone') ||
+         name.includes('headphone') || name.includes('neckband') || name.includes('smartwatch') ||
+         name.includes('charger') || name.includes('power bank') || name.includes('data cable') ||
+         name.includes('usb cable');
 }
 
 export function isFootwearProduct(p: Product): boolean {
-  const t = `${p.cat || ''} ${p.name || ''}`.toLowerCase();
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  if (cat.includes('footwear') || cat.includes('shoe') || cat.includes('sandal')) return true;
+
+  // Protect against mobile holder / tech matches
+  if (name.includes('holder') || name.includes('mount') || name.includes('stand') || name.includes('phone')) {
+    return false;
+  }
+
+  return name.includes('shoe') || name.includes('sneaker') || name.includes('loafer') ||
+         name.includes('boot') || name.includes('sandal') || name.includes('slipper') ||
+         name.includes('slide') || name.includes('croc') || name.includes('heel') ||
+         name.includes('flat') || name.includes('chappal');
+}
+
+/**
+ * Kids & Baby collection matcher:
+ * Only genuine children's products belong here. Words like "girls" in "women & girls handbag"
+ * or "school purse for women" must NEVER qualify a women's accessory or women's clothing as Kids.
+ */
+export function isKidsProduct(p: Product): boolean {
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+
+  // Explicit Kids categories
+  if (cat.includes('kids') || cat.includes('baby') || cat.includes('toy')) {
+    return true;
+  }
+
+  // Strong exclusion: If the product is clearly for adult women, it is NOT Kids
   if (
-    t.includes('holder') || t.includes('mount') || t.includes('stand') ||
-    t.includes('mobile') || t.includes('phone') || t.includes('earbud') ||
-    t.includes('smartwatch') || t.includes('charger') || t.includes('cable') ||
-    t.includes('bottle')
+    name.includes('women') || name.includes('ladies') || name.includes('saree') ||
+    name.includes('kurti') || name.includes('lehenga') || name.includes('purse') ||
+    name.includes('handbag') || name.includes('bra') || name.includes('lingerie')
   ) {
     return false;
   }
-  return t.includes('shoe') || t.includes('sneaker') || t.includes('loafer') ||
-         t.includes('boot') || t.includes('sandal') || t.includes('slipper') ||
-         t.includes('slide') || t.includes('croc') || t.includes('heel') ||
-         t.includes('flat') || t.includes('chappal') || (p.cat || '').toLowerCase().includes('footwear');
+
+  // Exclude adult menswear
+  if (name.includes('menswear') || name.includes("men's") || name.includes('men shirt')) {
+    return false;
+  }
+
+  // Only qualify if explicitly targeting baby or kids
+  return (
+    name.includes('infant') || name.includes('toddler') || name.includes('babywear') ||
+    name.includes('romper') || name.includes('baby') || name.includes('toy') ||
+    name.includes('kids wear') || name.includes('kids clothing') || name.includes('boys clothes') ||
+    name.includes('girls frock') || name.includes('kids shoes')
+  );
 }
 
+/**
+ * Women's Collection matcher:
+ * Includes Women's ethnic wear, western wear, tops, dresses, jewellery, handbags,
+ * and women's footwear.
+ */
 export function isWomenProduct(p: Product): boolean {
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+
+  // If it's strictly a kids product, exclude from Women
   if (isKidsProduct(p)) return false;
-  const t = `${p.cat || ''} ${p.name || ''} ${p.desc || ''}`.toLowerCase();
-  if (t.includes('holder') || t.includes('mount') || t.includes('smartphone')) return false;
-  return t.includes('saree') || t.includes('sari') || t.includes('kurti') ||
-         t.includes('lehenga') || t.includes('dress') || t.includes('gown') ||
-         t.includes('anarkali') || t.includes('dupatta') ||
-         t.includes('women') || t.includes('ladies') || t.includes('jewel') ||
-         t.includes('handbag') || t.includes('clutch') || t.includes('blouse') ||
-         t.includes('salwar') || t.includes('palazzo') || (p.cat || '').toLowerCase().includes('women');
+
+  // Women's categories
+  if (
+    cat.includes('women') || cat.includes('saree') || cat.includes('kurti') ||
+    cat.includes('dress') || cat.includes('jewel') || cat.includes('handbag') ||
+    cat.includes('ethnic wear')
+  ) {
+    return true;
+  }
+
+  // Protect against pure tech / electronics
+  if (isElectronicsProduct(p) || (p.cat || '').toLowerCase().includes('holder')) return false;
+
+  return (
+    name.includes('women') || name.includes('ladies') || name.includes('saree') ||
+    name.includes('sari') || name.includes('kurti') || name.includes('lehenga') ||
+    name.includes('anarkali') || name.includes('dupatta') || name.includes('blouse') ||
+    name.includes('dress') || name.includes('gown') || name.includes('handbag') ||
+    name.includes('purse') || name.includes('clutch') || name.includes('jewel') ||
+    name.includes('earring') || name.includes('necklace') || name.includes('bangle') ||
+    name.includes('mangalsutra') || name.includes('palazzo') || name.includes('salwar')
+  );
 }
 
-export function isKidsProduct(p: Product): boolean {
-  const t = `${p.cat || ''} ${p.name || ''} ${p.desc || ''}`.toLowerCase();
-  if (t.includes('holder') || t.includes('mount')) return false;
-  return t.includes('kid') || t.includes('baby') || t.includes('infant') ||
-         t.includes('toddler') || t.includes('boy') || t.includes('girl') ||
-         t.includes('romper') || t.includes('toy') || t.includes('school bag') ||
-         (p.cat || '').toLowerCase().includes('kid');
+/**
+ * Men's Collection matcher:
+ * Includes shirts, t-shirts, jeans, trousers, jackets, and men's footwear.
+ */
+export function isMenProduct(p: Product): boolean {
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+
+  if (isWomenProduct(p) || isKidsProduct(p) || isElectronicsProduct(p)) return false;
+
+  if (
+    cat.includes('men') || cat.includes('shirt') || cat.includes('jean') ||
+    cat.includes('trouser') || cat.includes('jacket')
+  ) {
+    return true;
+  }
+
+  return (
+    name.includes("men's") || name.includes('menswear') || name.includes('shirt') ||
+    name.includes('tshirt') || name.includes('t-shirt') || name.includes('polo') ||
+    name.includes('jean') || name.includes('denim') || name.includes('trouser') ||
+    name.includes('chino') || name.includes('cargo') || name.includes('jacket') ||
+    name.includes('blazer') || name.includes('kurta')
+  );
 }
 
+/**
+ * Accessories & Lifestyle collection matcher:
+ * STRICT TAXONOMY: Includes only wallets, belts, sunglasses, watches, caps, hats,
+ * backpacks, handbags, fashion jewellery, and mobile mounts.
+ * NEVER acts as a fallback for clothing, shoes, or unclassified items.
+ */
 export function isAccessoriesProduct(p: Product): boolean {
-  const t = `${p.cat || ''} ${p.name || ''} ${p.desc || ''}`.toLowerCase();
-  return t.includes('holder') || t.includes('mount') || t.includes('stand') ||
-         t.includes('sunglass') || t.includes('eyewear') || t.includes('watch') ||
-         t.includes('belt') || t.includes('wallet') || t.includes('cap') ||
-         t.includes('hat') || t.includes('bag') || t.includes('backpack') ||
-         t.includes('jewel') || (p.cat || '').toLowerCase().includes('access');
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+
+  // Explicit non-accessories exclusions
+  if (
+    cat.includes('saree') || cat.includes('kurti') || cat.includes('dress') ||
+    cat.includes('shirt') || cat.includes('jean') || cat.includes('trouser') ||
+    cat.includes('home') || cat.includes('kitchen')
+  ) {
+    return false;
+  }
+
+  // Standard footwear is separate
+  if (cat.includes('footwear') || (isFootwearProduct(p) && !name.includes('shoe care'))) {
+    return false;
+  }
+
+  // Genuine accessories categories
+  if (
+    cat.includes('accessor') || cat.includes('handbag') || cat.includes('jewel') ||
+    cat.includes('sunglass') || cat.includes('watch') || cat.includes('wallet') ||
+    cat.includes('holder')
+  ) {
+    return true;
+  }
+
+  // Name matches for genuine accessory items
+  return (
+    name.includes('wallet') || name.includes('belt') || name.includes('sunglass') ||
+    name.includes('eyewear') || name.includes('goggle') || name.includes('watch') ||
+    name.includes('wristwatch') || name.includes('cap') || name.includes('hat') ||
+    name.includes('backpack') || name.includes('handbag') || name.includes('clutch') ||
+    name.includes('purse') || name.includes('sling bag') || name.includes('tote bag') ||
+    name.includes('jewel') || name.includes('earring') || name.includes('necklace') ||
+    name.includes('bracelet') || name.includes('holder') || name.includes('mount')
+  );
 }
 
 export function isHomeLivingProduct(p: Product): boolean {
-  const t = `${p.cat || ''} ${p.name || ''} ${p.desc || ''}`.toLowerCase();
-  return t.includes('kitchen') || t.includes('bottle') || t.includes('flask') ||
-         t.includes('sipper') || t.includes('bedsheet') || t.includes('curtain') ||
-         t.includes('cushion') || t.includes('decor') || t.includes('organizer') ||
-         t.includes('clock') || t.includes('cookware') || (p.cat || '').toLowerCase().includes('home');
+  const cat = (p.cat || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  if (cat.includes('home') || cat.includes('kitchen')) return true;
+  return (
+    name.includes('bottle') || name.includes('flask') || name.includes('sipper') ||
+    name.includes('kitchen') || name.includes('cookware') || name.includes('bedsheet') ||
+    name.includes('curtain') || name.includes('cushion') || name.includes('decor') ||
+    name.includes('organizer') || name.includes('clock')
+  );
 }
 
-export function isMenProduct(p: Product): boolean {
-  const t = `${p.cat || ''} ${p.name || ''} ${p.desc || ''}`.toLowerCase();
-  if (isWomenProduct(p) || isKidsProduct(p)) return false;
-  if (t.includes('holder') || t.includes('mount') || t.includes('phone') || t.includes('bottle')) return false;
-  return t.includes('shirt') || t.includes('tshirt') || t.includes('t-shirt') ||
-         t.includes('tee') || t.includes('jean') || t.includes('denim') ||
-         t.includes('trouser') || t.includes('chino') || t.includes('cargo') ||
-         t.includes('jacket') || t.includes('blazer') || t.includes('men') ||
-         t.includes('menswear') || t.includes('kurta');
+/**
+ * Evaluates whether a product qualifies as a New Arrival based on publication/added dates.
+ * Products added within the last 30 days qualify as New Arrivals.
+ */
+export function isNewProduct(p: Product): boolean {
+  const dateStr = p.createdAt || p.updatedAt;
+  if (dateStr) {
+    const timestamp = new Date(dateStr).getTime();
+    if (!isNaN(timestamp)) {
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      return (Date.now() - timestamp) <= thirtyDaysMs;
+    }
+  }
+  if (p.added && typeof p.added === 'number') {
+    const now = Date.now();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    if (p.added > 1700000000000) {
+      return (now - p.added) <= thirtyDaysMs;
+    }
+  }
+  return false;
 }
 
 /**
@@ -236,10 +451,10 @@ export function isValidProductVideoUrl(url?: string | null): boolean {
     if (!isInstagram) return false;
 
     const path = parsed.pathname.trim();
-    // Support /reel/<id>, /reels/<id>, /p/<id>, /share/reel/<id>, /tv/<id> with a non-empty identifier
     return /^\/(?:reel|reels|p|share\/reel|tv)\/[a-zA-Z0-9_\-\.]+/i.test(path);
   } catch {
     return false;
   }
 }
+
 
