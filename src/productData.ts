@@ -24,6 +24,7 @@ export interface Product {
   retailerProductUrl?: string; // Legacy alias
   imgUrl?: string;
   videoUrl?: string;
+  categories?: string[]; // Storefront category collection assignments (e.g. ['all', 'women', 'accessories'])
   desc: string;
   published: boolean;
   featured?: boolean;
@@ -62,8 +63,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'women',
     name: 'Women’s Collection',
     h1: 'Women’s Ethnic & Western Wear',
-    title: 'Women’s Collection — Sarees, Kurtis & Dresses | Devtosh SuperBazaar',
-    description: 'Explore elegant Banarasi sarees, pure cotton kurtis, party dresses, and designer jewellery handpicked for elegance.',
+    title: "Devtosh Superbazaar - Women's Fashion & Clothing",
+    description: "Discover sarees, kurtis, dresses, handbags and more at Devtosh Superbazaar. Explore women's fashion and find products from online retailers.",
     badge: 'Ethnic & Western'
   },
   {
@@ -71,8 +72,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'men',
     name: 'Men’s Collection',
     h1: 'Men’s Casuals & Tailored Essentials',
-    title: 'Men’s Collection — Shirts, Tees, Jeans & Trousers | Devtosh SuperBazaar',
-    description: 'Everyday oxford shirts, heavyweight graphic tees, stone-wash stretch jeans, and utility cargo trousers.',
+    title: "Devtosh Superbazaar - Men's Fashion & Clothing",
+    description: "Explore men's shirts, jeans, trousers, footwear and everyday fashion at Devtosh Superbazaar. Discover styles from online retail partners.",
     badge: 'Menswear'
   },
   {
@@ -80,8 +81,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'kids',
     name: 'Kids & Baby',
     h1: 'Kids & Baby Clothing & Essentials',
-    title: 'Kids & Baby — Comfortable Clothing & Play Sets | Devtosh SuperBazaar',
-    description: 'Pure cotton t-shirts, denim shorts sets, festive flare frocks, and comfortable daily wear for boys and girls.',
+    title: "Devtosh Superbazaar - Kids' Clothing & Baby Products",
+    description: "Browse kids' clothing, baby products, footwear and everyday essentials at Devtosh Superbazaar. Explore collections from online retailers.",
     badge: 'Kids & Baby'
   },
   {
@@ -89,8 +90,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'footwear',
     name: 'Footwear Collection',
     h1: 'Footwear — Sneakers, Loafers & Sandals',
-    title: 'Footwear Collection — Sneakers, Loafers & Sandals | Devtosh SuperBazaar',
-    description: 'Everyday canvas sneakers, memory foam slip-on loafers, and orthopedic comfort ethnic sandals.',
+    title: 'Devtosh Superbazaar - Shoes, Sneakers & Footwear',
+    description: 'Discover sneakers, shoes, sandals and everyday footwear at Devtosh Superbazaar. Browse styles for different occasions and preferences.',
     badge: 'Footwear'
   },
   {
@@ -98,8 +99,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'mobiles',
     name: 'Electronics & Mobiles',
     h1: 'Electronics, Smartphones & Mobile Holders',
-    title: 'Electronics & Mobiles — Car Mounts, Stands & Audio | Devtosh SuperBazaar',
-    description: '360° rotating car mobile holders, aluminium desktop stands, wireless earbuds, and Bluetooth calling smartwatches.',
+    title: 'Devtosh Superbazaar - Mobiles & Electronics',
+    description: 'Explore smartphones, earphones, mobile accessories and electronics at Devtosh Superbazaar. Discover products from online retail partners.',
     badge: 'Mobiles & Tech'
   },
   {
@@ -107,8 +108,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'electronics',
     name: 'Electronics & Gadgets',
     h1: 'Electronics, Gadgets & Audio Accessories',
-    title: 'Electronics & Gadgets — Audio, Wearables & Accessories | Devtosh SuperBazaar',
-    description: 'Wireless earbuds, smartwatches, fast charging accessories, and audio gadgets curated from verified merchants.',
+    title: 'Devtosh Superbazaar - Mobiles & Electronics',
+    description: 'Explore smartphones, earphones, mobile accessories and electronics at Devtosh Superbazaar. Discover products from online retail partners.',
     badge: 'Tech & Gadgets'
   },
   {
@@ -116,8 +117,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'accessories',
     name: 'Accessories & Lifestyle',
     h1: 'Accessories & Lifestyle Essentials',
-    title: 'Accessories & Lifestyle — Polarised Sunglasses & RFID Wallets | Devtosh SuperBazaar',
-    description: 'TAC polarised UV400 sunglasses, genuine leather RFID slim bifold wallets, caps, belts, and daily essentials.',
+    title: 'Devtosh Superbazaar - Fashion Accessories & Lifestyle',
+    description: 'Browse handbags, watches, wallets, jewellery and lifestyle accessories at Devtosh Superbazaar. Discover products across online retailers.',
     badge: 'Accessories'
   },
   {
@@ -125,8 +126,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'home-living',
     name: 'Home & Living',
     h1: 'Home & Living Essentials',
-    title: 'Home & Living — Insulated Flasks & Kitchen Utilities | Devtosh SuperBazaar',
-    description: 'Stainless steel double-walled insulated vacuum flasks, kitchen organizers, and everyday home essentials.',
+    title: 'Devtosh Superbazaar - Home & Living Products',
+    description: 'Discover kitchen utilities, insulated water bottles, home decor, and organizers at Devtosh Superbazaar. Curated essentials from verified retailers.',
     badge: 'Home & Living'
   },
   {
@@ -134,8 +135,8 @@ export const SITE_CATEGORIES: CategoryMeta[] = [
     slug: 'new',
     name: 'New Arrivals',
     h1: 'New In: Latest Drops & Fresh Finds',
-    title: 'New Arrivals — Trending Styles & Latest Catalog Drops | Devtosh SuperBazaar',
-    description: 'The freshest curated fashion, mobile tech, and footwear additions curated across merchant partner platforms.',
+    title: 'Devtosh Superbazaar - Latest Fashion & New Arrivals',
+    description: 'Browse the latest curated fashion, footwear, electronics, and trending lifestyle additions at Devtosh Superbazaar from verified retailers.',
     badge: 'Fresh Drops'
   }
 ];
@@ -363,14 +364,22 @@ export function isMenProduct(p: Product): boolean {
 export function isAccessoriesProduct(p: Product): boolean {
   const cat = (p.cat || '').toLowerCase();
   const name = (p.name || '').toLowerCase();
+  const textCombined = `${cat} ${name}`;
 
-  // Explicit non-accessories exclusions
+  // Explicit non-accessories exclusions (Clothing & footwear are not accessories)
   if (
-    cat.includes('saree') || cat.includes('kurti') || cat.includes('dress') ||
-    cat.includes('shirt') || cat.includes('jean') || cat.includes('trouser') ||
+    textCombined.includes('saree') || textCombined.includes('sari') ||
+    textCombined.includes('kurti') || textCombined.includes('lehenga') ||
+    textCombined.includes('dress') || textCombined.includes('gown') ||
+    textCombined.includes('shirt') || textCombined.includes('tshirt') ||
+    textCombined.includes('t-shirt') || textCombined.includes('jean') ||
+    textCombined.includes('trouser') || textCombined.includes('hoodie') ||
+    textCombined.includes('jacket') || textCombined.includes('mop') ||
     cat.includes('home') || cat.includes('kitchen')
   ) {
-    return false;
+    if (!name.includes('belt') && !name.includes('pin') && !name.includes('brooch')) {
+      return false;
+    }
   }
 
   // Standard footwear is separate
@@ -432,6 +441,117 @@ export function isNewProduct(p: Product): boolean {
     }
   }
   return false;
+}
+
+// ============================================================================
+// Multi-Category Selection & Suggestion System
+// ============================================================================
+
+export interface AdminCategoryOption {
+  slug: string;
+  name: string;
+  desc: string;
+  description?: string;
+}
+
+export const ADMIN_CATEGORY_OPTIONS: AdminCategoryOption[] = [
+  { slug: 'all', name: 'All Products', desc: 'Main curated catalogue' },
+  { slug: 'women', name: "Women's Fashion", desc: 'Sarees, kurtis, dresses, tops & jewellery' },
+  { slug: 'men', name: "Men's Fashion", desc: 'Shirts, tees, jeans, jackets & menswear' },
+  { slug: 'kids', name: 'Kids & Baby', desc: 'Children’s wear, infant clothes & toys' },
+  { slug: 'footwear', name: 'Footwear', desc: 'Sneakers, sandals, loafers, slides & heels' },
+  { slug: 'mobiles', name: 'Electronics & Mobiles', desc: 'Smartphones, car holders & audio gadgets' },
+  { slug: 'accessories', name: 'Accessories & Lifestyle', desc: 'Handbags, wallets, sunglasses, watches, belts' },
+  { slug: 'home-living', name: 'Home & Living', desc: 'Kitchenware, bottles, organizers & decor' },
+  { slug: 'new', name: 'New Arrivals', desc: 'Latest catalogue drops & fresh additions' },
+];
+
+/**
+ * Automatically suggests relevant storefront category slugs based on available product metadata
+ * (name, category, brand, description).
+ */
+export function suggestProductCategories(info: {
+  name?: string;
+  cat?: string;
+  brand?: string;
+  desc?: string;
+  price?: number;
+}): string[] {
+  const selected = new Set<string>();
+  selected.add('all'); // All products belong to All Products by default
+
+  const dummy: Product = {
+    id: '',
+    slug: '',
+    name: info.name || '',
+    brand: info.brand || '',
+    cat: info.cat || '',
+    price: info.price || 0,
+    col: '',
+    sizes: [],
+    ret: '',
+    desc: info.desc || '',
+    published: true,
+    added: Date.now()
+  };
+
+  if (isWomenProduct(dummy)) {
+    selected.add('women');
+  }
+  if (isMenProduct(dummy)) {
+    selected.add('men');
+  }
+  if (isKidsProduct(dummy)) {
+    selected.add('kids');
+  }
+  if (isFootwearProduct(dummy)) {
+    selected.add('footwear');
+  }
+  if (isElectronicsProduct(dummy)) {
+    selected.add('mobiles');
+  }
+  if (isAccessoriesProduct(dummy)) {
+    selected.add('accessories');
+  }
+  if (isHomeLivingProduct(dummy)) {
+    selected.add('home-living');
+  }
+
+  return Array.from(selected);
+}
+
+/**
+ * Authoritative category collection filter:
+ * 1. If administrator has saved explicit category assignments (`p.categories`), uses them.
+ * 2. If `p.categories` is absent/empty (legacy Firestore records), falls back to heuristic matchers.
+ */
+export function isProductInCategory(p: Product, categorySlug: string): boolean {
+  if (categorySlug === 'all') {
+    return !p.categories || p.categories.length === 0 || p.categories.includes('all');
+  }
+
+  // Authoritative check if administrator saved specific category assignments
+  if (Array.isArray(p.categories) && p.categories.length > 0) {
+    if (categorySlug === 'mobiles' && (p.categories.includes('mobiles') || p.categories.includes('electronics'))) {
+      return true;
+    }
+    if (categorySlug === 'electronics' && (p.categories.includes('electronics') || p.categories.includes('mobiles'))) {
+      return true;
+    }
+    return p.categories.includes(categorySlug);
+  }
+
+  // Backward compatibility fallback for legacy products
+  if (categorySlug === 'women') return isWomenProduct(p);
+  if (categorySlug === 'men') return isMenProduct(p);
+  if (categorySlug === 'kids') return isKidsProduct(p);
+  if (categorySlug === 'footwear') return isFootwearProduct(p);
+  if (categorySlug === 'mobiles' || categorySlug === 'electronics') return isElectronicsProduct(p);
+  if (categorySlug === 'accessories') return isAccessoriesProduct(p);
+  if (categorySlug === 'home-living') return isHomeLivingProduct(p);
+  if (categorySlug === 'new') return isNewProduct(p);
+
+  return true;
 }
 
 /**
