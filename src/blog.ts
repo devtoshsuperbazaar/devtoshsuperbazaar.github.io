@@ -424,7 +424,10 @@ export function renderBlogIndex(
   const listItems = featured ? items.slice(1) : [];
 
   return {
-    title: selectedCategory ? `${selectedCategory} Guides` : 'Editorial Blog & Style Guides',
+    title: selectedCategory ? `Devtosh Superbazaar - ${selectedCategory} Guides` : 'Devtosh Superbazaar - Fashion Blog & Style Guides',
+    metaDesc: selectedCategory
+      ? `Explore curated ${selectedCategory} style guides, outfit comparisons, and smart shopping tips at Devtosh Superbazaar.`
+      : 'Curated fashion guides, saree styling advice, and mobile accessory roundups by the Devtosh Superbazaar editorial team.',
     navKey: 'blog',
     html: `
       <section class="w pgs wide">
@@ -577,8 +580,14 @@ export function renderArticleDetail(
     </section>
   ` : '';
 
+  let rawTitle = art.metaTitle || art.title;
+  rawTitle = rawTitle.replace(/^(Devtosh|DevTosh)\s*Superbazaar\s*[-—|:]\s*/i, '').trim();
+  rawTitle = rawTitle.replace(/\s*[-—|:]\s*(Devtosh|DevTosh)\s*Superbazaar.*$/i, '').trim();
+  const pageTitle = `Devtosh Superbazaar - ${rawTitle}`;
+
   return {
-    title: art.title,
+    title: pageTitle,
+    metaDesc: (art.metaDesc || art.excerpt || `Read ${rawTitle} on the Devtosh Superbazaar editorial blog.`).slice(0, 155),
     navKey: 'blog',
     html: `
       <section class="w pgs wide art-view">
