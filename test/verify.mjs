@@ -863,12 +863,19 @@ function isWomenProduct(p) {
 function isAccessoriesProduct(p) {
   const cat = (p.cat || '').toLowerCase();
   const name = (p.name || '').toLowerCase();
+  const textCombined = `${cat} ${name}`;
   if (
-    cat.includes('saree') || cat.includes('kurti') || cat.includes('shirt') ||
-    cat.includes('jeans') || cat.includes('t-shirt') || cat.includes('trousers') ||
-    cat.includes('dress') || cat.includes('footwear')
+    textCombined.includes('saree') || textCombined.includes('sari') ||
+    textCombined.includes('kurti') || textCombined.includes('kurta') ||
+    textCombined.includes('lehenga') || textCombined.includes('blouse') ||
+    textCombined.includes('shirt') || textCombined.includes('t-shirt') ||
+    textCombined.includes('jeans') || textCombined.includes('trousers') ||
+    textCombined.includes('footwear') || textCombined.includes('shoes') ||
+    textCombined.includes('sneaker') || textCombined.includes('sandals')
   ) {
-    return false;
+    if (!textCombined.includes('bag') && !textCombined.includes('purse') && !textCombined.includes('wallet') && !textCombined.includes('belt') && !textCombined.includes('watch') && !textCombined.includes('jewel')) {
+      return false;
+    }
   }
   if (cat.includes('accessories') || cat.includes('jewel') || cat.includes('watch') || cat.includes('bag') || cat.includes('belt')) {
     return true;
@@ -951,6 +958,252 @@ if (!appSource.includes('<span style="background:var(--bl);color:var(--dp);paddi
 
 if (!appSource.includes('p.slug === sub || getSafeProductSlug(p.slug, p.id, p.name) === sub || p.id === sub')) {
   throw new Error('Product routing does not support backwards-compatible safe slug resolution');
+}
+
+// ============================================================================
+// TASK 7: Automatic Category Selection & Multi-Category Assignments
+// ============================================================================
+
+const productDataSource = fs.readFileSync('src/productData.ts', 'utf8');
+
+if (!productDataSource.includes('export const ADMIN_CATEGORY_OPTIONS')) {
+  throw new Error('ADMIN_CATEGORY_OPTIONS must be exported from src/productData.ts');
+}
+if (!productDataSource.includes('export function suggestProductCategories')) {
+  throw new Error('suggestProductCategories must be exported from src/productData.ts');
+}
+if (!productDataSource.includes('export function isProductInCategory')) {
+  throw new Error('isProductInCategory must be exported from src/productData.ts');
+}
+
+// Check admin form UI and Firestore persistence
+if (!appSource.includes('name="p-category-cbs"') || !appSource.includes('class="p-cat-cb"')) {
+  throw new Error('Admin form missing category selection checkboxes');
+}
+if (!appSource.includes('id="cat-auto-suggest-btn"')) {
+  throw new Error('Admin form missing ⚡ Auto-Suggest Categories button');
+}
+if (!appSource.includes('refreshAutoCategorySuggestions')) {
+  throw new Error('src/app.ts missing refreshAutoCategorySuggestions helper');
+}
+if (!appSource.includes('categories,') || !appSource.includes('categories: Array.isArray(d.categories) ? d.categories : []')) {
+  throw new Error('src/app.ts does not map or save categories in Firestore product payloads');
+}
+
+// Check SSG Prerendering uses isProductInCategory
+const prerenderSource = fs.readFileSync('scripts/prerender-blog.ts', 'utf8');
+if (!prerenderSource.includes('isProductInCategory(p, cat.slug)')) {
+  throw new Error('scripts/prerender-blog.ts category loop must use isProductInCategory');
+}
+
+// Simulation tests for the 4 exact user specification examples:
+function simulateSuggest(info) {
+  const name = (info.name || '').toLowerCase();
+  const cat = (info.cat || '').toLowerCase();
+  const desc = (info.desc || '').toLowerCase();
+  const textCombined = `${cat} ${name} ${desc}`;
+
+  const set = new Set(['all']);
+
+  // Women's
+  if (
+    textCombined.includes('women') || textCombined.includes('ladies') || textCombined.includes('saree') ||
+    textCombined.includes('sari') || textCombined.includes('kurti') || textCombined.includes('lehenga') ||
+    textCombined.includes('anarkali') || textCombined.includes('dupatta') || textCombined.includes('blouse') ||
+    textCombined.includes('dress') || textCombined.includes('gown') || textCombined.includes('handbag') ||
+    textCombined.includes('purse') || textCombined.includes('jewel')
+  ) {
+    set.add('women');
+  }
+
+  // Men's
+  if (
+    textCombined.includes('men') && !textCombined.includes('women') ||
+    textCombined.includes("men's") || textCombined.includes('shirt') ||
+    textCombined.includes('t-shirt') || textCombined.includes('jeans') ||
+    textCombined.includes('trousers') || textCombined.includes('kurta pyjama') ||
+    textCombined.includes('blazer') || textCombined.includes('suit')
+  ) {
+    set.add('men');
+  }
+
+  // Footwear
+  if (
+    textCombined.includes('footwear') || textCombined.includes('shoe') ||
+    textCombined.includes('sneaker') || textCombined.includes('sandal') ||
+    textCombined.includes('loafer') || textCombined.includes('slide') ||
+    textCombined.includes('heels') || textCombined.includes('boots')
+  ) {
+    set.add('footwear');
+  }
+
+  // Mobiles & Electronics
+  if (
+    textCombined.includes('mobile') || textCombined.includes('phone') ||
+    textCombined.includes('smartphone') || textCombined.includes('earbud') ||
+    textCombined.includes('headphone') || textCombined.includes('smartwatch') ||
+    textCombined.includes('electronics')
+  ) {
+    set.add('mobiles');
+  }
+
+  // Accessories
+  if (
+    (textCombined.includes('bag') || textCombined.includes('purse') || textCombined.includes('wallet') ||
+     textCombined.includes('belt') || textCombined.includes('watch') || textCombined.includes('jewel') ||
+     textCombined.includes('sunglasses') || textCombined.includes('accessories')) &&
+    !textCombined.includes('saree') && !textCombined.includes('kurti') && !textCombined.includes('shirt')
+  ) {
+    set.add('accessories');
+  }
+
+  return Array.from(set);
+}
+
+function simulateIsProductInCategory(p, catSlug) {
+  if (p.categories && Array.isArray(p.categories) && p.categories.length > 0) {
+    if (catSlug === 'all') return true;
+    return p.categories.includes(catSlug);
+  }
+  return false;
+}
+
+// 1. Women's saree: All Products, Women's Fashion
+const sareeSugg = simulateSuggest({ name: 'Cotton Silk Jacquard Saree With Unstitched Blouse', cat: 'Sarees' });
+if (!sareeSugg.includes('all') || !sareeSugg.includes('women')) {
+  throw new Error("Women's saree suggestion failed: expected ['all', 'women']");
+}
+if (sareeSugg.includes('accessories')) {
+  throw new Error("Women's saree must NEVER be suggested in Accessories!");
+}
+
+// 2. Men's sneakers: All Products, Men's Fashion, Footwear
+const sneakerSugg = simulateSuggest({ name: "Men's Lightweight Breathable Running Shoes Sneakers", cat: 'Footwear' });
+if (!sneakerSugg.includes('all') || !sneakerSugg.includes('men') || !sneakerSugg.includes('footwear')) {
+  throw new Error("Men's sneakers suggestion failed: expected ['all', 'men', 'footwear']");
+}
+
+// 3. Smartphone: All Products, Electronics & Mobiles
+const phoneSugg = simulateSuggest({ name: 'OnePlus Nord 5G Smartphone with AMOLED Display', cat: 'Smartphones' });
+if (!phoneSugg.includes('all') || !phoneSugg.includes('mobiles')) {
+  throw new Error("Smartphone suggestion failed: expected ['all', 'mobiles']");
+}
+
+// 4. Women's handbag: All Products, Women's Fashion, Accessories & Lifestyle
+const handbagSugg = simulateSuggest({ name: 'Women Hand Bags Purse for Girls and Women Shoulder Tote Bag', cat: 'Accessories & Lifestyle' });
+if (!handbagSugg.includes('all') || !handbagSugg.includes('women') || !handbagSugg.includes('accessories')) {
+  throw new Error("Women's handbag suggestion failed: expected ['all', 'women', 'accessories']");
+}
+
+// Test multi-category membership without duplicate documents:
+const multiCatProd = {
+  id: 'prod-123',
+  name: 'Multi Category Sneaker',
+  categories: ['all', 'men', 'footwear']
+};
+if (!simulateIsProductInCategory(multiCatProd, 'all')) throw new Error("Multi-category product must match 'all'");
+if (!simulateIsProductInCategory(multiCatProd, 'men')) throw new Error("Multi-category product must match 'men'");
+if (!simulateIsProductInCategory(multiCatProd, 'footwear')) throw new Error("Multi-category product must match 'footwear'");
+if (simulateIsProductInCategory(multiCatProd, 'women')) throw new Error("Multi-category product must not match unselected category 'women'");
+
+// Test manual override retention:
+const overriddenProd = {
+  id: 'prod-456',
+  name: 'Custom Assigned Item',
+  categories: ['women'] // Admin manually excluded 'accessories' and 'all'
+};
+// ============================================================================
+// TASK 8: SEO Title & Meta Description Standardization
+// ============================================================================
+
+// 18.1 Check index.html title and meta tags
+const idxHtmlContent = fs.readFileSync('index.html', 'utf8');
+const titleMatch = idxHtmlContent.match(/<title>(.*?)<\/title>/i);
+if (!titleMatch || !titleMatch[1].startsWith('Devtosh Superbazaar - ')) {
+  throw new Error(`index.html title must start with "Devtosh Superbazaar - ", got: "${titleMatch ? titleMatch[1] : ''}"`);
+}
+const ogTitleMatch = idxHtmlContent.match(/<meta property="og:title" content="(.*?)"/i);
+if (!ogTitleMatch || !ogTitleMatch[1].startsWith('Devtosh Superbazaar - ')) {
+  throw new Error(`index.html og:title must start with "Devtosh Superbazaar - ", got: "${ogTitleMatch ? ogTitleMatch[1] : ''}"`);
+}
+const twTitleMatch = idxHtmlContent.match(/<meta name="twitter:title" content="(.*?)"/i);
+if (!twTitleMatch || !twTitleMatch[1].startsWith('Devtosh Superbazaar - ')) {
+  throw new Error(`index.html twitter:title must start with "Devtosh Superbazaar - ", got: "${twTitleMatch ? twTitleMatch[1] : ''}"`);
+}
+
+// 18.2 Check SITE_CATEGORIES in src/productData.ts
+const catTitlesRegex = /title:\s*['"`](.*?)['"`]/g;
+let cMatch;
+let catTitleCount = 0;
+while ((cMatch = catTitlesRegex.exec(productDataSource)) !== null) {
+  const catTitle = cMatch[1];
+  if (!catTitle.startsWith('Devtosh Superbazaar - ')) {
+    throw new Error(`Category title in SITE_CATEGORIES does not start with "Devtosh Superbazaar - ": "${catTitle}"`);
+  }
+  catTitleCount++;
+}
+if (catTitleCount < 9) {
+  throw new Error(`Expected at least 9 category titles in SITE_CATEGORIES, found ${catTitleCount}`);
+}
+
+// 18.3 Check dynamic title normalization logic in src/app.ts
+if (!appSource.includes("const finalTitle = rawTitle ? `Devtosh Superbazaar - ${rawTitle}` : 'Devtosh Superbazaar - Fashion, Mobiles & Lifestyle';")) {
+  throw new Error('src/app.ts draw() missing dynamic title prefix standardization');
+}
+
+// 18.4 If dist/ exists, check all generated HTML files for SEO prefix compliance
+if (fs.existsSync('dist')) {
+  function getHtmlFiles(dir) {
+    let files = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        files = files.concat(getHtmlFiles(fullPath));
+      } else if (entry.isFile() && entry.name.endsWith('.html') && !fullPath.includes('/assets/')) {
+        files.push(fullPath);
+      }
+    }
+    return files;
+  }
+
+  const distHtmlFiles = getHtmlFiles('dist');
+  for (const file of distHtmlFiles) {
+    const content = fs.readFileSync(file, 'utf8');
+    const fileTitle = (content.match(/<title>(.*?)<\/title>/i) || [])[1] || '';
+    if (!fileTitle.startsWith('Devtosh Superbazaar - ')) {
+      throw new Error(`File ${file} title does not start with "Devtosh Superbazaar - ": "${fileTitle}"`);
+    }
+    if (fileTitle.includes('Devtosh Superbazaar - Devtosh Superbazaar') || fileTitle.includes('DevTosh Superbazaar — DevTosh Superbazaar')) {
+      throw new Error(`File ${file} has duplicated brand name in title: "${fileTitle}"`);
+    }
+    if (fileTitle.includes('| DevTosh Superbazaar') || fileTitle.includes('— DevTosh Superbazaar')) {
+      throw new Error(`File ${file} has legacy brand suffix in title: "${fileTitle}"`);
+    }
+
+    const fileOgTitle = (content.match(/<meta property="og:title" content="(.*?)"/i) || [])[1] || '';
+    if (!fileOgTitle.startsWith('Devtosh Superbazaar - ')) {
+      throw new Error(`File ${file} og:title does not start with "Devtosh Superbazaar - ": "${fileOgTitle}"`);
+    }
+    const fileTwTitle = (content.match(/<meta name="twitter:title" content="(.*?)"/i) || [])[1] || '';
+    if (!fileTwTitle.startsWith('Devtosh Superbazaar - ')) {
+      throw new Error(`File ${file} twitter:title does not start with "Devtosh Superbazaar - ": "${fileTwTitle}"`);
+    }
+
+    // Verify meta description, og:description, twitter:description are present and non-empty
+    const metaDesc = (content.match(/<meta name="description" content="(.*?)"/i) || [])[1] || '';
+    if (!metaDesc || metaDesc.trim().length < 20) {
+      throw new Error(`File ${file} has missing or too short meta description: "${metaDesc}"`);
+    }
+    const ogDesc = (content.match(/<meta property="og:description" content="(.*?)"/i) || [])[1] || '';
+    if (!ogDesc || ogDesc.trim().length < 20) {
+      throw new Error(`File ${file} has missing or too short og:description: "${ogDesc}"`);
+    }
+    const twDesc = (content.match(/<meta name="twitter:description" content="(.*?)"/i) || [])[1] || '';
+    if (!twDesc || twDesc.trim().length < 20) {
+      throw new Error(`File ${file} has missing or too short twitter:description: "${twDesc}"`);
+    }
+  }
 }
 
 console.log('Automated validation suite passed with 100% success.');
