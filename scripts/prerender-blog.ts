@@ -14,7 +14,8 @@ import {
   isHomeLivingProduct,
   isNewProduct,
   getSafeProductSlug,
-  isValidProductVideoUrl
+  isValidProductVideoUrl,
+  isProductInCategory
 } from '../src/productData.ts';
 import { Article, formatBlogDate, calculateReadTime } from '../src/blogData.ts';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -55,6 +56,7 @@ async function fetchLiveProductsFromFirestore(): Promise<Product[]> {
         retailerProductUrl: data.retailerProductUrl || '',
         imgUrl: data.imgUrl || '',
         videoUrl: data.videoUrl || '',
+        categories: Array.isArray(data.categories) ? data.categories : [],
         desc: data.desc || '',
         published: true,
         featured: !!data.featured,
@@ -501,13 +503,18 @@ export async function prerender() {
     faqs?: { q: string; a: string }[];
   }): string {
     let out = baseHtml;
+    const cleanTitle = (options.title || '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const cleanDesc = (options.description || '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
 
     // Clean existing meta tags that could conflict
-    out = out.replace(/<title>.*?<\/title>/i, `<title>${esc(options.title)}</title>`);
-    out = out.replace(/<meta name="description" content=".*?"\s*\/?>/i, `<meta name="description" content="${esc(options.description)}">`);
-    out = out.replace(/<meta property="og:title" content=".*?"\s*\/?>/i, `<meta property="og:title" content="${esc(options.title)}">`);
-    out = out.replace(/<meta property="og:description" content=".*?"\s*\/?>/i, `<meta property="og:description" content="${esc(options.description)}">`);
+    out = out.replace(/<title>.*?<\/title>/i, `<title>${esc(cleanTitle)}</title>`);
+    out = out.replace(/<meta name="description" content=".*?"\s*\/?>/i, `<meta name="description" content="${esc(cleanDesc)}">`);
+    out = out.replace(/<meta property="og:title" content=".*?"\s*\/?>/i, `<meta property="og:title" content="${esc(cleanTitle)}">`);
+    out = out.replace(/<meta property="og:description" content=".*?"\s*\/?>/i, `<meta property="og:description" content="${esc(cleanDesc)}">`);
     out = out.replace(/<meta property="og:type" content=".*?"\s*\/?>/i, `<meta property="og:type" content="${options.ogType || 'website'}">`);
+    out = out.replace(/<meta name="twitter:title" content=".*?"\s*\/?>/gi, '');
+    out = out.replace(/<meta name="twitter:description" content=".*?"\s*\/?>/gi, '');
+    out = out.replace(/<meta name="twitter:card" content=".*?"\s*\/?>/gi, '');
     out = out.replace(/<link rel="canonical" href=".*?"\s*\/?>/gi, '');
     out = out.replace(/<meta property="og:url" content=".*?"\s*\/?>/gi, '');
     out = out.replace(/<meta property="og:image" content=".*?"\s*\/?>/gi, '');
@@ -526,7 +533,7 @@ export async function prerender() {
         {
           '@type': 'Organization',
           '@id': `${BASE_ORIGIN}/#organization`,
-          'name': 'DevTosh Superbazaar',
+          'name': 'Devtosh Superbazaar',
           'url': `${BASE_ORIGIN}/`,
           'logo': `${BASE_ORIGIN}/favicon-48x48.png`,
           'sameAs': ['https://www.instagram.com/devtoshsuperbazaar/'],
@@ -543,8 +550,8 @@ export async function prerender() {
           '@type': 'WebSite',
           '@id': `${BASE_ORIGIN}/#website`,
           'url': `${BASE_ORIGIN}/`,
-          'name': 'DevTosh Superbazaar',
-          'description': 'Curated fashion, smartphones, mobile accessories, footwear and lifestyle affiliate discovery.',
+          'name': 'Devtosh Superbazaar',
+          'description': 'Discover curated fashion, smartphones, electronics, accessories, and home living products at Devtosh Superbazaar.',
           'publisher': {
             '@id': `${BASE_ORIGIN}/#organization`
           }
@@ -602,6 +609,9 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   <link rel="canonical" href="${options.canonicalUrl}">
   <meta property="og:url" content="${options.canonicalUrl}">
   <meta property="og:image" content="${ogImg}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${esc(cleanTitle)}">
+  <meta name="twitter:description" content="${esc(cleanDesc)}">
   <meta name="twitter:image" content="${ogImg}">
   <meta name="robots" content="${robotsContent}">${schemaBlock}
 `;
@@ -650,16 +660,16 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
     '@type': 'WebPage',
     '@id': `${BASE_ORIGIN}/#webpage`,
     'url': `${BASE_ORIGIN}/`,
-    'name': 'DevTosh Superbazaar — Curated Fashion, Mobiles & Lifestyle Discovery',
-    'description': 'Editorial discovery catalog and affiliate shopping platform for women\'s, men\'s, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by DevTosh Superbazaar.',
+    'name': 'Devtosh Superbazaar - Fashion, Mobiles & Lifestyle',
+    'description': 'Discover curated fashion, smartphones, electronics, accessories, and home living products at Devtosh Superbazaar. Explore quality finds from online retail partners.',
     'isPartOf': {
       '@id': `${BASE_ORIGIN}/#website`
     }
   };
 
   const homeHtml = assembleHtml({
-    title: 'DevTosh Superbazaar — Curated Fashion, Mobiles & Lifestyle Discovery',
-    description: 'Editorial discovery catalog and affiliate shopping platform for women\'s, men\'s, kids fashion, footwear, smartphones, mobile accessories, and lifestyle by DevTosh Superbazaar.',
+    title: 'Devtosh Superbazaar - Fashion, Mobiles & Lifestyle',
+    description: 'Discover curated fashion, smartphones, electronics, accessories, and home living products at Devtosh Superbazaar. Explore quality finds from online retail partners.',
     canonicalUrl: `${BASE_ORIGIN}/`,
     jsonLd: homeJsonLd,
     faqs: homeFaqs,
@@ -675,15 +685,11 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   console.log('[SSG Prerender] Prerendering category collection pages...');
   for (const cat of SITE_CATEGORIES) {
     let items: Product[] = [];
-    if (cat.slug === 'women') items = liveProducts.filter(isWomenProduct);
-    else if (cat.slug === 'men') items = liveProducts.filter(isMenProduct);
-    else if (cat.slug === 'kids') items = liveProducts.filter(isKidsProduct);
-    else if (cat.slug === 'footwear') items = liveProducts.filter(isFootwearProduct);
-    else if (cat.slug === 'mobiles' || cat.slug === 'electronics') items = liveProducts.filter(isElectronicsProduct);
-    else if (cat.slug === 'accessories') items = liveProducts.filter(isAccessoriesProduct);
-    else if (cat.slug === 'home-living') items = liveProducts.filter(isHomeLivingProduct);
-    else if (cat.slug === 'new') items = liveProducts.filter(isNewProduct).sort((a, b) => (b.added || 0) - (a.added || 0));
-    else items = liveProducts;
+    if (cat.slug === 'new') {
+      items = liveProducts.filter(p => isProductInCategory(p, 'new')).sort((a, b) => (b.added || 0) - (a.added || 0));
+    } else {
+      items = liveProducts.filter(p => isProductInCategory(p, cat.slug));
+    }
 
     const canonicalUrl = `${BASE_ORIGIN}/category/${cat.slug}/`;
     const catFaqs = getCategoryFaqs(cat.slug, cat.name);
@@ -775,8 +781,10 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   for (const p of allProductsToPrerender) {
     const safeSlug = getSafeProductSlug(p.slug, p.id, p.name);
     const canonicalUrl = `${BASE_ORIGIN}/product/${safeSlug}/`;
-    const pageTitle = `${p.name} — Buy Online at Best Price | DevTosh Superbazaar`;
-    const pageDesc = `Discover ${p.name} by ${p.brand} at ₹${p.price} (MRP ₹${p.mrp || p.price}). ${p.desc}`;
+    const pageTitle = `Devtosh Superbazaar - ${p.name}`;
+    const pageDesc = p.desc
+      ? `Discover ${p.name} by ${p.brand} at ₹${p.price} (MRP ₹${p.mrp || p.price}). ${p.desc}`.slice(0, 155)
+      : `Discover ${p.name} by ${p.brand} at ₹${p.price}. Curated product discovery at Devtosh Superbazaar.`;
     const ogImg = p.imgUrl || `${BASE_ORIGIN}/favicon-48x48.png`;
     const d = disc(p);
 
@@ -962,8 +970,11 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
   for (const article of publishedArticles) {
     const canonicalUrl = article.canonicalUrl || `${BASE_ORIGIN}/blog/${article.slug}/`;
-    const pageTitle = `${article.metaTitle || article.title} — DevTosh Superbazaar`;
-    const pageDesc = article.metaDesc || article.excerpt;
+    let rawTitle = article.metaTitle || article.title;
+    rawTitle = rawTitle.replace(/^(Devtosh|DevTosh)\s*Superbazaar\s*[-—|:]\s*/i, '').trim();
+    rawTitle = rawTitle.replace(/\s*[-—|:]\s*(Devtosh|DevTosh)\s*Superbazaar.*$/i, '').trim();
+    const pageTitle = `Devtosh Superbazaar - ${rawTitle}`;
+    const pageDesc = (article.metaDesc || article.excerpt || `Read ${rawTitle} on the Devtosh Superbazaar editorial blog.`).slice(0, 155);
     const ogImg = article.ogImage || article.coverImage || `${BASE_ORIGIN}/favicon-48x48.png`;
     const readTime = article.readTimeMinutes || calculateReadTime(article.content);
     const pubDateStr = formatBlogDate(article.publishedAt);
@@ -1081,8 +1092,8 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
   // Blog Index (/blog/)
   const blogIndexCanonical = `${BASE_ORIGIN}/blog/`;
-  const blogIndexTitle = 'Editorial Style Blog & Shopping Guides | DevTosh Superbazaar';
-  const blogIndexDesc = 'Curated fashion guides, saree styling advice, and mobile accessory roundups by the DevTosh Superbazaar editorial team.';
+  const blogIndexTitle = 'Devtosh Superbazaar - Fashion Blog & Style Guides';
+  const blogIndexDesc = 'Curated fashion guides, saree styling advice, and mobile accessory roundups by the Devtosh Superbazaar editorial team.';
 
   const blogIndexJsonLd = {
     '@type': 'CollectionPage',
@@ -1165,54 +1176,54 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   const infoPages = [
     {
       slug: 'about',
-      title: 'About DevTosh Superbazaar',
-      description: 'Learn about DevTosh Superbazaar, an independent curated online catalog for fashion, electronics, and lifestyle discovery.',
-      heading: 'About DevTosh Superbazaar',
+      title: 'Devtosh Superbazaar - About Us',
+      description: 'Learn about Devtosh Superbazaar, an independent curated online catalog for fashion, electronics, and lifestyle discovery.',
+      heading: 'About Devtosh Superbazaar',
       schemaType: 'AboutPage',
       body: `
-        <p class="lead">DevTosh Superbazaar is an independent online product discovery and curation platform operating in India.</p>
+        <p class="lead">Devtosh Superbazaar is an independent online product discovery and curation platform operating in India.</p>
         <p class="mu" style="margin-top:20px;line-height:1.75">Our mission is to help Indian shoppers discover stylish apparel, dependable mobile accessories, comfortable footwear, and trending lifestyle essentials from trusted e-commerce marketplaces (including Meesho and other partner retail merchants). We handpick high-value listings, evaluate verified customer feedback, and provide direct links so you can browse, compare, and purchase directly from reputable sellers.</p>
         <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
           <h2 style="font-size:18px;margin:0 0 12px;color:var(--dp)">Independent Editorial Discovery — Not a Seller</h2>
-          <p style="line-height:1.75;margin:0 0 14px">DevTosh Superbazaar is <b>not a retailer, merchant, or manufacturer</b>. We do not stock physical inventory, process transactions, collect payments, or handle shipments and returns. When you click a product link on our catalog, you are securely redirected to the destination partner marketplace where the transaction is completed under that retailer's standard terms, pricing, and buyer protection policies.</p>
+          <p style="line-height:1.75;margin:0 0 14px">Devtosh Superbazaar is <b>not a retailer, merchant, or manufacturer</b>. We do not stock physical inventory, process transactions, collect payments, or handle shipments and returns. When you click a product link on our catalog, you are securely redirected to the destination partner marketplace where the transaction is completed under that retailer's standard terms, pricing, and buyer protection policies.</p>
           <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">We are committed to transparent recommendations, guest-first privacy, and adherence to Indian digital commerce disclosures, including the Advertising Standards Council of India (ASCI) guidelines for affiliate and influencer disclosures.</p>
         </div>
       `
     },
     {
       slug: 'contact',
-      title: 'Contact DevTosh Superbazaar',
-      description: 'Get in touch with DevTosh Superbazaar for catalog suggestions, business collaborations, or general questions.',
-      heading: 'Contact DevTosh Superbazaar',
+      title: 'Devtosh Superbazaar - Contact Us',
+      description: 'Get in touch with Devtosh Superbazaar for catalog suggestions, business collaborations, or general questions.',
+      heading: 'Contact Devtosh Superbazaar',
       schemaType: 'ContactPage',
       body: `
         <p class="lead">We welcome your feedback, catalog suggestions, merchant inquiries, and partnership proposals.</p>
         <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
           <h2 style="font-size:18px;margin:0 0 14px;color:var(--dp)">Editorial &amp; Business Inquiries</h2>
           <dl class="sp" style="margin:0 0 18px">
-            <dt>Platform Name</dt><dd>DevTosh Superbazaar</dd>
-            <dt>Editorial Team</dt><dd>DevTosh Superbazaar Editorial Desk</dd>
+            <dt>Platform Name</dt><dd>Devtosh Superbazaar</dd>
+            <dt>Editorial Team</dt><dd>Devtosh Superbazaar Editorial Desk</dd>
             <dt>Direct Email</dt><dd><a href="mailto:devtoshsuperbazaar@gmail.com" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar@gmail.com</a></dd>
             <dt>Official Instagram</dt><dd><a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);text-decoration:underline">@devtoshsuperbazaar</a></dd>
             <dt>Website</dt><dd><a href="${BASE_ORIGIN}/" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar.github.io</a></dd>
           </dl>
           <div style="padding:14px 16px;background:var(--bg);border-left:3px solid var(--wn);border-radius:2px">
             <h3 style="font-size:15px;margin:0 0 6px;color:var(--dp)">Need Help With an Order, Shipping, or Refund?</h3>
-            <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">Because transactions occur entirely on third-party partner marketplaces (such as Meesho and participating partner retailers), <b>DevTosh Superbazaar does not have access to your order details, payment status, tracking numbers, or customer account</b>. For assistance with delivery delays, returns, replacements, or refunds, please contact the retailer where your order was placed using the confirmation email, SMS, or retailer mobile app.</p>
+            <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">Because transactions occur entirely on third-party partner marketplaces (such as Meesho and participating partner retailers), <b>Devtosh Superbazaar does not have access to your order details, payment status, tracking numbers, or customer account</b>. For assistance with delivery delays, returns, replacements, or refunds, please contact the retailer where your order was placed using the confirmation email, SMS, or retailer mobile app.</p>
           </div>
         </div>
       `
     },
     {
       slug: 'affiliate-disclosure',
-      title: 'Affiliate Disclosure — DevTosh Superbazaar',
-      description: 'Learn how DevTosh Superbazaar maintains editorial independence and how affiliate partnerships work under ASCI guidelines.',
+      title: 'Devtosh Superbazaar - Affiliate Disclosure',
+      description: 'Learn how Devtosh Superbazaar maintains editorial independence and how affiliate partnerships work under ASCI guidelines.',
       heading: 'Affiliate Disclosure',
       body: `
-        <p class="lead">DevTosh Superbazaar believes in full transparency regarding how this website operates and earns revenue, in full accordance with the Advertising Standards Council of India (ASCI) guidelines and digital marketing standards.</p>
+        <p class="lead">Devtosh Superbazaar believes in full transparency regarding how this website operates and earns revenue, in full accordance with the Advertising Standards Council of India (ASCI) guidelines and digital marketing standards.</p>
         <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
           <h2 style="font-size:18px;margin:0 0 14px;color:var(--dp)">How Affiliate Partnerships Work</h2>
-          <p style="line-height:1.75;margin:0 0 16px">DevTosh Superbazaar features curated product links directing users to third-party e-commerce platforms (including Meesho and other participating online retail marketplaces). We participate in affiliate marketing programs where qualifying purchases made via outbound links may earn our platform a referral commission.</p>
+          <p style="line-height:1.75;margin:0 0 16px">Devtosh Superbazaar features curated product links directing users to third-party e-commerce platforms (including Meesho and other participating online retail marketplaces). We participate in affiliate marketing programs where qualifying purchases made via outbound links may earn our platform a referral commission.</p>
           <p style="line-height:1.75;margin:0 0 16px"><b>No Extra Cost to You:</b> These commissions are paid directly by the partner platforms out of their marketing budgets. The retail price you pay, available coupons, promotional discounts, and payment terms remain exactly the same as if you visited the merchant platform directly.</p>
           <p style="line-height:1.75;margin:0 0 16px"><b>Editorial Independence:</b> Products featured in our catalog and blog articles are selected based on editorial merit, utility, value for money, and customer satisfaction ratings. Affiliate partnerships do not guarantee favorable editorial placement, and we never accept payment to endorse substandard merchandise.</p>
           <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0"><b>Pricing &amp; Availability Notice:</b> Merchant partner pricing, stock status, delivery timelines, and promotional coupons are dynamic and set solely by the external retailer. We cannot guarantee that a listed price will remain active after publication. Please confirm final details on the destination storefront prior to ordering.</p>
@@ -1221,11 +1232,11 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
     },
     {
       slug: 'privacy',
-      title: 'Privacy Policy — DevTosh Superbazaar',
-      description: 'Read the privacy policy of DevTosh Superbazaar. Guest-first privacy architecture without mandatory logins.',
+      title: 'Devtosh Superbazaar - Privacy Policy',
+      description: 'Read the privacy policy of Devtosh Superbazaar. Guest-first privacy architecture without mandatory logins.',
       heading: 'Privacy Policy',
       body: `
-        <p class="lead">DevTosh Superbazaar is built with a guest-first, privacy-respecting architecture. We strive to align our data handling with the principles of the Digital Personal Data Protection (DPDP) Act, 2023 of India.</p>
+        <p class="lead">Devtosh Superbazaar is built with a guest-first, privacy-respecting architecture. We strive to align our data handling with the principles of the Digital Personal Data Protection (DPDP) Act, 2023 of India.</p>
         <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
           <h2 style="font-size:18px;margin:0 0 14px;color:var(--dp)">1. Guest-First Architecture &amp; Data Minimization</h2>
           <p style="line-height:1.75;margin:0 0 16px">We believe the best way to safeguard user privacy is not to collect personal data in the first place. You are not required to create an account, log in, or provide your name, phone number, physical address, or payment details to browse our catalog, read editorial articles, or save bookmarks.</p>
@@ -1236,7 +1247,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
           <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">4. Analytics &amp; Cookies</h2>
           <p style="line-height:1.75;margin:0 0 16px">We use Google Analytics (gtag.js measurement ID: <code>G-9SSN7RQ6V1</code>) to track aggregate, non-personally identifiable traffic metrics (such as page views, device types, and referral sources). You can disable analytics tracking using standard browser privacy controls or content blockers.</p>
           <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">5. Third-Party Retailer Links</h2>
-          <p style="line-height:1.75;margin:0 0 16px">Our website contains outbound links to external merchant platforms (such as Meesho and other participating retailers). Once you leave DevTosh Superbazaar, your interactions, transactions, and personal information are governed by the privacy policy and terms of the respective external retailer.</p>
+          <p style="line-height:1.75;margin:0 0 16px">Our website contains outbound links to external merchant platforms (such as Meesho and other participating retailers). Once you leave Devtosh Superbazaar, your interactions, transactions, and personal information are governed by the privacy policy and terms of the respective external retailer.</p>
           <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">6. Your Rights &amp; Contact</h2>
           <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">For privacy inquiries, technical data concerns, or questions regarding our guest-first architecture, please contact our editorial desk at <a href="mailto:devtoshsuperbazaar@gmail.com" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar@gmail.com</a>.</p>
         </div>
@@ -1244,22 +1255,22 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
     },
     {
       slug: 'terms',
-      title: 'Terms of Use — DevTosh Superbazaar',
-      description: 'Terms of service and catalog accuracy guidelines for DevTosh Superbazaar under Indian law.',
+      title: 'Devtosh Superbazaar - Terms of Use',
+      description: 'Terms of service and catalog accuracy guidelines for Devtosh Superbazaar under Indian law.',
       heading: 'Terms of Use',
       body: `
-        <p class="lead">Please review these Terms of Use carefully before using DevTosh Superbazaar. By accessing or browsing this website, you acknowledge and agree to these terms.</p>
+        <p class="lead">Please review these Terms of Use carefully before using Devtosh Superbazaar. By accessing or browsing this website, you acknowledge and agree to these terms.</p>
         <div style="background:var(--sf);border:1px solid var(--bd);padding:24px;border-radius:4px;margin-top:28px">
           <h2 style="font-size:18px;margin:0 0 14px;color:var(--dp)">1. Nature of the Service</h2>
-          <p style="line-height:1.75;margin:0 0 16px">DevTosh Superbazaar is a free, curated product discovery and editorial catalog platform. We curate fashion apparel, electronics, mobile accessories, and lifestyle recommendations for Indian consumers. DevTosh Superbazaar is <b>not a seller, retailer, or marketplace vendor</b>.</p>
+          <p style="line-height:1.75;margin:0 0 16px">Devtosh Superbazaar is a free, curated product discovery and editorial catalog platform. We curate fashion apparel, electronics, mobile accessories, and lifestyle recommendations for Indian consumers. Devtosh Superbazaar is <b>not a seller, retailer, or marketplace vendor</b>.</p>
           <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">2. Third-Party Retailer Transactions &amp; Disclaimers</h2>
-          <p style="line-height:1.75;margin:0 0 16px">All product sales, orders, deliveries, returns, exchanges, warranty claims, and payments take place directly on third-party retailer storefronts (e.g., Meesho or the destination merchant platform). DevTosh Superbazaar does not collect payments, process bank details, manage shipping logistics, or guarantee product availability.</p>
+          <p style="line-height:1.75;margin:0 0 16px">All product sales, orders, deliveries, returns, exchanges, warranty claims, and payments take place directly on third-party retailer storefronts (e.g., Meesho or the destination merchant platform). Devtosh Superbazaar does not collect payments, process bank details, manage shipping logistics, or guarantee product availability.</p>
           <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">3. Information Accuracy &amp; Price Fluctuations</h2>
-          <p style="line-height:1.75;margin:0 0 16px">While we strive to keep product specifications, discounts, and pricing accurate, external merchants frequently adjust prices and promotional offers. The price, shipping cost, and availability displayed on the merchant partner's checkout page at the time of purchase shall always supersede information shown on DevTosh Superbazaar.</p>
+          <p style="line-height:1.75;margin:0 0 16px">While we strive to keep product specifications, discounts, and pricing accurate, external merchants frequently adjust prices and promotional offers. The price, shipping cost, and availability displayed on the merchant partner's checkout page at the time of purchase shall always supersede information shown on Devtosh Superbazaar.</p>
           <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">4. Intellectual Property</h2>
-          <p style="line-height:1.75;margin:0 0 16px">Original editorial commentary, blog posts, curated guides, design elements, and logos on DevTosh Superbazaar are the property of DevTosh Superbazaar. Third-party brand names, registered trademarks, and partner logos belong to their respective proprietors and are referenced strictly for nominative identification and affiliate referral purposes.</p>
+          <p style="line-height:1.75;margin:0 0 16px">Original editorial commentary, blog posts, curated guides, design elements, and logos on Devtosh Superbazaar are the property of Devtosh Superbazaar. Third-party brand names, registered trademarks, and partner logos belong to their respective proprietors and are referenced strictly for nominative identification and affiliate referral purposes.</p>
           <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">5. Limitation of Liability</h2>
-          <p style="line-height:1.75;margin:0 0 16px">To the fullest extent permitted under Indian law, DevTosh Superbazaar and its operators shall not be liable for any indirect, incidental, or consequential damages resulting from product purchases, retailer fulfillment failures, delivery delays, or website downtime.</p>
+          <p style="line-height:1.75;margin:0 0 16px">To the fullest extent permitted under Indian law, Devtosh Superbazaar and its operators shall not be liable for any indirect, incidental, or consequential damages resulting from product purchases, retailer fulfillment failures, delivery delays, or website downtime.</p>
           <h2 style="font-size:18px;margin:24px 0 14px;color:var(--dp)">6. Governing Law &amp; Jurisdiction</h2>
           <p class="mu" style="font-size:13.5px;line-height:1.65;margin:0">These Terms of Use are governed by the laws of India. Any disputes arising in connection with the platform shall be subject to the exclusive jurisdiction of the competent courts in India.</p>
         </div>
@@ -1295,7 +1306,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
     `;
 
     const infoHtml = assembleHtml({
-      title: `${info.title} | DevTosh Superbazaar`,
+      title: info.title,
       description: info.description,
       canonicalUrl,
       jsonLd,
@@ -1319,7 +1330,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
   const wishlistCanonical = `${BASE_ORIGIN}/wishlist/`;
   const wishlistFaqs = [
     {
-      q: 'How do saved items work on DevTosh Superbazaar?',
+      q: 'How do saved items work on Devtosh Superbazaar?',
       a: 'Items you bookmark by clicking the heart icon are saved privately in your web browser using HTML5 local storage. You do not need to register, create an account, or submit any personal information.'
     },
     {
@@ -1347,7 +1358,7 @@ ${JSON.stringify({ '@context': 'https://schema.org', '@graph': graphItems }, nul
 
   // Wishlist explicitly has noindex: true and NO structured data
   const wishlistHtml = assembleHtml({
-    title: 'My Saved Items | DevTosh Superbazaar',
+    title: 'Devtosh Superbazaar - Saved Wishlist',
     description: 'View and manage your saved fashion, footwear, mobile accessories, and lifestyle items.',
     canonicalUrl: wishlistCanonical,
     noindex: true,
@@ -1432,8 +1443,8 @@ Sitemap: ${BASE_ORIGIN}/sitemap.xml
 
   // 404.html explicitly has noindex: true and NO structured data
   const notFoundHtml = assembleHtml({
-    title: 'Page Not Found | DevTosh Superbazaar',
-    description: 'The requested page could not be located on DevTosh Superbazaar.',
+    title: 'Devtosh Superbazaar - Page Not Found',
+    description: 'The requested page could not be located on Devtosh Superbazaar.',
     canonicalUrl: `${BASE_ORIGIN}/404.html`,
     noindex: true,
     mainHtml: notFoundMainHtml
