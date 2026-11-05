@@ -60,7 +60,10 @@ import {
   getSafeProductSlug,
   SITE_CATEGORIES,
   CategoryMeta,
-  isValidProductVideoUrl
+  isValidProductVideoUrl,
+  ADMIN_CATEGORY_OPTIONS,
+  suggestProductCategories,
+  isProductInCategory
 } from './productData.ts';
 
 export type { Product, CategoryMeta };
@@ -76,7 +79,10 @@ export {
   isNewProduct,
   getSafeProductSlug,
   SITE_CATEGORIES,
-  isValidProductVideoUrl
+  isValidProductVideoUrl,
+  ADMIN_CATEGORY_OPTIONS,
+  suggestProductCategories,
+  isProductInCategory
 };
 
 export interface Category {
@@ -298,6 +304,7 @@ export async function loadPublicProducts() {
         imgUrl: d.imgUrl || '',
         videoUrl: d.videoUrl || '',
         desc: d.desc || '',
+        categories: Array.isArray(d.categories) ? d.categories : [],
         published: true,
         featured: !!d.featured,
         createdAt: d.createdAt,
@@ -352,6 +359,7 @@ export async function loadAdminProducts() {
         imgUrl: d.imgUrl || '',
         videoUrl: d.videoUrl || '',
         desc: d.desc || '',
+        categories: Array.isArray(d.categories) ? d.categories : [],
         published: !!d.published,
         featured: !!d.featured,
         createdAt: d.createdAt,
@@ -727,8 +735,10 @@ function renderFaqsHtml(
   `;
 }
 
-function renderPublicCatalog(title: string, desc: string, base: Product[], key: string) {
-  const faqs = getCategoryFaqs(key, title);
+function renderPublicCatalog(title: string, desc: string, base: Product[], key: string, customH1?: string) {
+  const heading = customH1 || title.replace(/^(Devtosh|DevTosh)\s*Superbazaar\s*[-—|:]\s*/i, '');
+  const breadcrumbText = customH1 ? customH1.split('—')[0].trim() : heading;
+  const faqs = getCategoryFaqs(key, heading);
 
   // If public products are still loading from Firestore and cache is empty, render loading skeleton
   if (!store.publicProductsLoaded && base.length === 0) {
@@ -740,7 +750,7 @@ function renderPublicCatalog(title: string, desc: string, base: Product[], key: 
       html: `
         <section class="w ih">
           <div class="tt">
-            <h1 class="f" tabindex="-1">${esc(title)}</h1>
+            <h1 class="f" tabindex="-1">${esc(heading)}</h1>
           </div>
           <p class="lead">${esc(desc)}</p>
         </section>
@@ -866,7 +876,7 @@ function renderPublicCatalog(title: string, desc: string, base: Product[], key: 
 
   const breadcrumbs: [string, string?][] = (key === 'all' || key === 'home' || !key)
     ? [['Home', '/']]
-    : [['Home', '/'], [title]];
+    : [['Home', '/'], [breadcrumbText]];
 
   return {
     title,
@@ -877,7 +887,7 @@ function renderPublicCatalog(title: string, desc: string, base: Product[], key: 
       <section class="w ih">
         ${renderBreadcrumb(breadcrumbs)}
         <div class="tt">
-          <h1 class="f" tabindex="-1">${esc(title)}</h1>
+          <h1 class="f" tabindex="-1">${esc(heading)}</h1>
           <span class="mu" aria-label="${filtered.length} products available">${filtered.length} items</span>
         </div>
         <p class="lead">${esc(desc)}</p>
@@ -944,22 +954,24 @@ function renderProductDetail(p: Product) {
     .slice(0, 4);
 
   const dept: [string, string] =
-    isElectronicsProduct(p) ? ['Electronics & Mobiles', '/category/mobiles/'] :
-    isWomenProduct(p) ? ['Women', '/category/women/'] :
-    isKidsProduct(p) ? ['Kids & Baby', '/category/kids/'] :
-    isFootwearProduct(p) ? ['Footwear', '/category/footwear/'] :
-    isAccessoriesProduct(p) ? ['Accessories', '/category/accessories/'] :
-    isHomeLivingProduct(p) ? ['Home & Living', '/category/home-living/'] :
+    isProductInCategory(p, 'mobiles') || isProductInCategory(p, 'electronics') ? ['Electronics & Mobiles', '/category/mobiles/'] :
+    isProductInCategory(p, 'women') ? ['Women', '/category/women/'] :
+    isProductInCategory(p, 'kids') ? ['Kids & Baby', '/category/kids/'] :
+    isProductInCategory(p, 'footwear') ? ['Footwear', '/category/footwear/'] :
+    isProductInCategory(p, 'accessories') ? ['Accessories', '/category/accessories/'] :
+    isProductInCategory(p, 'home-living') ? ['Home & Living', '/category/home-living/'] :
     ['Men', '/category/men/'];
 
   const prodUrl = `${window.location.origin}/product/${p.slug}/`;
   const canonicalUrl = `https://devtoshsuperbazaar.github.io/product/${p.slug}/`;
 
   return {
-    title: `${p.name} — Buy Online at Best Price`,
+    title: `Devtosh Superbazaar - ${p.name}`,
     navKey: dept[1].replace(/^\/category\/|\/$/g, ''),
     canonical: canonicalUrl,
-    metaDesc: `Discover ${p.name} by ${p.brand} at ₹${p.price} (MRP ₹${p.mrp || p.price}). ${p.desc.slice(0, 120)}`,
+    metaDesc: p.desc
+      ? `Discover ${p.name} by ${p.brand} at ₹${p.price} (MRP ₹${p.mrp || p.price}). ${p.desc}`.slice(0, 155)
+      : `Discover ${p.name} by ${p.brand} at ₹${p.price}. Curated product discovery at Devtosh Superbazaar.`,
     html: `
       <section class="w pgs wide">
         ${renderBreadcrumb([['Home', '/'], [dept[0], dept[1]], [p.name]])}
@@ -1059,7 +1071,8 @@ export function renderProductLoading(slug: string) {
 
 export function renderProductNotFound(slug: string) {
   return {
-    title: 'Product Not Found',
+    title: 'Devtosh Superbazaar - Product Not Found',
+    metaDesc: 'The requested product could not be found in our curated catalogue at Devtosh Superbazaar.',
     navKey: '',
     noindex: true,
     html: `
@@ -1084,7 +1097,8 @@ export function renderProductNotFound(slug: string) {
 function renderWishlistView() {
   const saved = store.products.filter(p => store.wishlistSlugs.includes(p.slug));
   return {
-    title: 'Saved Items & Favourites | DevTosh Superbazaar',
+    title: 'Devtosh Superbazaar - Saved Wishlist',
+    metaDesc: 'View and manage your saved fashion, footwear, mobile accessories, and lifestyle items.',
     navKey: 'wishlist',
     noindex: true,
     canonical: 'https://devtoshsuperbazaar.github.io/wishlist/',
@@ -1544,6 +1558,10 @@ function renderAdminProducts() {
   };
 }
 
+// Tracks whether the administrator has manually ticked/unticked category checkboxes
+// in the current product form session, to prevent typed inputs from overwriting deliberate edits.
+let userManuallyCustomizedCategories = false;
+
 function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
   const isEdit = !!p && !isClone;
   const isCloned = !!isClone;
@@ -1579,6 +1597,25 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
   const initialDiscount = (currentPrice && currentMrp && Number(currentMrp) > Number(currentPrice))
     ? Math.round(((Number(currentMrp) - Number(currentPrice)) / Number(currentMrp)) * 100)
     : 0;
+
+  // Active category selections:
+  // If product has saved categories, use them directly (do not overwrite on edit).
+  // If legacy product or empty, suggest relevant categories based on product info.
+  let activeSelectedCategories: string[] = [];
+  if (isEdit && Array.isArray(p?.categories) && p.categories.length > 0) {
+    activeSelectedCategories = [...p.categories];
+    userManuallyCustomizedCategories = true;
+  } else if (p) {
+    activeSelectedCategories = suggestProductCategories({
+      name: p.name || '',
+      cat: p.cat || '',
+      desc: p.desc || ''
+    });
+    userManuallyCustomizedCategories = false;
+  } else {
+    activeSelectedCategories = ['all'];
+    userManuallyCustomizedCategories = false;
+  }
 
   return {
     title,
@@ -1800,6 +1837,51 @@ function renderProductForm(p?: Product, editId?: string, isClone?: boolean) {
               </p>
             </div>
 
+            <!-- Website Category Collections Selection (Multi-select Checkboxes) -->
+            <div class="adm-field" style="margin:24px 0;padding:18px;background:var(--sf);border:1px solid var(--bd);border-radius:4px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+                <div>
+                  <label style="font-size:14px;font-weight:700;color:var(--dp);margin:0;display:flex;align-items:center;gap:8px">
+                    <span>Website Category Collections *</span>
+                    <span id="cat-selection-count" class="adm-badge pub" style="font-size:11px;padding:1px 8px">${activeSelectedCategories.length} selected</span>
+                  </label>
+                  <p class="mu" style="font-size:12px;margin:4px 0 0;line-height:1.45">
+                    Select every collection where this item should appear. Suggestions are auto-detected from product title, category, and specifications, but you have full manual control.
+                  </p>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button type="button" id="cat-auto-suggest-btn" class="adm-btn-sm" style="font-size:11.5px;padding:3px 10px;background:var(--bl);border-color:var(--wn);color:var(--wn);font-weight:600">
+                    ⚡ Auto-Suggest
+                  </button>
+                  <button type="button" id="cat-select-all-btn" class="adm-btn-sm" style="font-size:11px;padding:3px 8px">
+                    Select All
+                  </button>
+                  <button type="button" id="cat-clear-all-btn" class="adm-btn-sm" style="font-size:11px;padding:3px 8px">
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div id="cat-checkbox-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:10px;margin-top:14px">
+                ${ADMIN_CATEGORY_OPTIONS.map(c => {
+                  const isChecked = activeSelectedCategories.includes(c.slug);
+                  return `
+                    <label class="cat-cb-card" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--bg);border:1px solid ${isChecked ? 'var(--wn)' : 'var(--bd)'};border-radius:3px;cursor:pointer;transition:border-color .15s,background .15s">
+                      <input type="checkbox" name="p-category-cbs" class="p-cat-cb" value="${esc(c.slug)}" id="cb-cat-${esc(c.slug)}" ${isChecked ? 'checked' : ''} style="margin-top:2px;width:17px;height:17px;accent-color:var(--wn);cursor:pointer;flex-shrink:0" />
+                      <div style="line-height:1.35;min-width:0">
+                        <div style="font-size:13px;font-weight:600;color:var(--dp)">${esc(c.name)}</div>
+                        <div class="mu" style="font-size:11px;margin-top:2px">${esc(c.desc || c.description)}</div>
+                      </div>
+                    </label>
+                  `;
+                }).join('')}
+              </div>
+              <div id="cat-suggest-note" class="mu" style="font-size:11.5px;margin-top:10px;display:flex;align-items:center;gap:6px">
+                <span style="color:var(--wn)">ℹ️</span>
+                <span>One product can be assigned to multiple categories without creating duplicate Firestore documents.</span>
+              </div>
+            </div>
+
             <div style="margin:20px 0;padding:16px;background:var(--bl);border-radius:2px;display:flex;flex-direction:column;gap:12px">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
                 <input type="checkbox" id="p-published" ${p?.published !== false ? 'checked' : ''} style="width:18px;height:18px" />
@@ -2001,23 +2083,24 @@ function renderAdminSettings() {
 // --------------------------------------------------------------------------
 function renderAboutView() {
   return {
-    title: 'About DevTosh Superbazaar — Curated Product Discovery & Affiliate Guide',
+    title: 'Devtosh Superbazaar - About Us',
+    metaDesc: 'Learn about Devtosh Superbazaar, an independent curated online catalog for fashion, electronics, and lifestyle discovery.',
     navKey: 'about',
     html: `
       <section class="w pgs">
         ${renderBreadcrumb([['Home', '/'], ['About Us']])}
         <div class="tt">
-          <h1 class="f" tabindex="-1">About DevTosh Superbazaar</h1>
+          <h1 class="f" tabindex="-1">About Devtosh Superbazaar</h1>
         </div>
         <p class="lead" style="margin-top:16px">
-          DevTosh Superbazaar is an independent online product discovery catalogue. We curate handpicked fashion, smartphones, footwear, mobile accessories, and lifestyle essentials from trusted Indian retail marketplaces.
+          Devtosh Superbazaar is an independent online product discovery catalogue. We curate handpicked fashion, smartphones, footwear, mobile accessories, and lifestyle essentials from trusted Indian retail marketplaces.
         </p>
 
         <div style="margin-top:36px;display:flex;flex-direction:column;gap:24px">
           <div class="adm-card">
             <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Independent Product Discovery</h2>
             <p class="mu" style="line-height:1.65;margin:0">
-              DevTosh Superbazaar is not a retailer, manufacturer, warehouse operator, or logistics company. We act as an editorial discovery guide that surfaces high-value, verified products across trusted Indian ecommerce platforms (including Meesho and partner retail marketplaces). When you find an item you like, clicking "Shop at Retailer" takes you directly to the verified merchant store to complete checkout.
+              Devtosh Superbazaar is not a retailer, manufacturer, warehouse operator, or logistics company. We act as an editorial discovery guide that surfaces high-value, verified products across trusted Indian ecommerce platforms (including Meesho and partner retail marketplaces). When you find an item you like, clicking "Shop at Retailer" takes you directly to the verified merchant store to complete checkout.
             </p>
           </div>
 
@@ -2031,14 +2114,14 @@ function renderAboutView() {
           <div class="adm-card">
             <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Guest-First Privacy Architecture</h2>
             <p class="mu" style="line-height:1.65;margin:0">
-              We respect your privacy. DevTosh Superbazaar requires no forced account creation, passwords, or personal data to browse collections or save favorite products. Your saved selections remain strictly on your own device in your browser’s local storage.
+              We respect your privacy. Devtosh Superbazaar requires no forced account creation, passwords, or personal data to browse collections or save favorite products. Your saved selections remain strictly on your own device in your browser’s local storage.
             </p>
           </div>
 
           <div class="adm-card">
             <h2 class="f" style="font-size:20px;margin:0 0 10px;color:var(--dp)">Editorial Leadership & Desk</h2>
             <p class="mu" style="line-height:1.65;margin:0">
-              DevTosh Superbazaar is operated and curated by its editorial desk. For questions, suggestions, or brand collaborations, connect with us at <a href="mailto:devtoshsuperbazaar@gmail.com" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar@gmail.com</a> or on Instagram <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);text-decoration:underline">@devtoshsuperbazaar</a>.
+              Devtosh Superbazaar is operated and curated by its editorial desk. For questions, suggestions, or brand collaborations, connect with us at <a href="mailto:devtoshsuperbazaar@gmail.com" style="color:var(--wn);text-decoration:underline">devtoshsuperbazaar@gmail.com</a> or on Instagram <a href="https://www.instagram.com/devtoshsuperbazaar/" target="_blank" rel="noopener noreferrer" style="color:var(--wn);text-decoration:underline">@devtoshsuperbazaar</a>.
             </p>
           </div>
         </div>
@@ -2053,7 +2136,8 @@ function renderAboutView() {
 
 function renderContactView() {
   return {
-    title: 'Contact DevTosh Superbazaar — Editorial Inquiries & Support',
+    title: 'Devtosh Superbazaar - Contact Us',
+    metaDesc: 'Get in touch with Devtosh Superbazaar for catalog suggestions, business collaborations, or general questions.',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -2113,37 +2197,38 @@ function renderContactView() {
 function renderFaqView() {
   const allFaqs = [
     {
-      q: 'What is DevTosh Superbazaar?',
-      a: 'DevTosh Superbazaar is an independent editorial discovery platform that curates high-value fashion, smartphones, mobile accessories, footwear, and lifestyle products from trusted Indian retail marketplaces.'
+      q: 'What is Devtosh Superbazaar?',
+      a: 'Devtosh Superbazaar is an independent editorial discovery platform that curates high-value fashion, smartphones, mobile accessories, footwear, and lifestyle products from trusted Indian retail marketplaces.'
     },
     {
-      q: 'How does shopping through DevTosh Superbazaar work?',
+      q: 'How does shopping through Devtosh Superbazaar work?',
       a: 'We review and curate products from merchant inventories across participating platforms like Meesho and partner retailers. When you find an item you like and click "Shop at Retailer", you are redirected to the official seller store to complete your purchase safely.'
     },
     {
-      q: 'Are payments made directly to DevTosh Superbazaar?',
-      a: 'No. Orders, transactions, shipping, tracking, and returns are handled entirely by the destination retailer (e.g., Meesho). DevTosh Superbazaar never collects payments or accesses your financial information directly.'
+      q: 'Are payments made directly to Devtosh Superbazaar?',
+      a: 'No. Orders, transactions, shipping, tracking, and returns are handled entirely by the destination retailer (e.g., Meesho). Devtosh Superbazaar never collects payments or accesses your financial information directly.'
     },
     {
-      q: 'How does DevTosh Superbazaar track product prices and discounts?',
+      q: 'How does Devtosh Superbazaar track product prices and discounts?',
       a: 'Our editorial system logs verified retail pricing, maximum retail prices (MRP), and active seasonal discounts directly from partner seller feeds so you always see genuine savings and current prices.'
     },
     {
-      q: 'How does the DevTosh Superbazaar Wishlist work?',
+      q: 'How does the Devtosh Superbazaar Wishlist work?',
       a: 'Items you save by clicking the heart icon are stored privately in your browser using local storage. You do not need to create an account, log in, or provide personal data.'
     },
     {
       q: 'How do affiliate links and commissions work?',
-      a: 'DevTosh Superbazaar participates in affiliate partnerships and may receive a modest commission on qualifying purchases made through partner retailer links. This never increases your price or affects product rankings.'
+      a: 'Devtosh Superbazaar participates in affiliate partnerships and may receive a modest commission on qualifying purchases made through partner retailer links. This never increases your price or affects product rankings.'
     },
     {
-      q: 'How can I get in touch with DevTosh Superbazaar?',
+      q: 'How can I get in touch with Devtosh Superbazaar?',
       a: 'You can reach us at devtoshsuperbazaar@gmail.com or connect via our official Instagram @devtoshsuperbazaar.'
     }
   ];
 
   return {
-    title: 'Frequently Asked Questions',
+    title: 'Devtosh Superbazaar - Frequently Asked Questions',
+    metaDesc: 'Helpful answers regarding our product curation, retailer shopping links, and store operations at Devtosh Superbazaar.',
     navKey: '',
     html: `
       <section class="w ih" style="max-width:880px;margin:0 auto;padding-top:40px;padding-bottom:48px">
@@ -2152,7 +2237,7 @@ function renderFaqView() {
         </nav>
         <div class="tt" style="margin-top:16px;margin-bottom:28px">
           <h1 class="f" tabindex="-1">Frequently Asked Questions</h1>
-          <p class="lead">Find answers to common questions about product curation, shopping safely through our partner links, and store policies at DevTosh Superbazaar.</p>
+          <p class="lead">Find answers to common questions about product curation, shopping safely through our partner links, and store policies at Devtosh Superbazaar.</p>
         </div>
         ${renderFaqsHtml(allFaqs, 'All General & Shopping Questions', 'Click or tap any question below to view the answer. Only one answer expands at a time.', 'faq-page')}
         <p style="margin-top:36px">
@@ -2165,7 +2250,8 @@ function renderFaqView() {
 
 function renderAffiliateDisclosureView() {
   return {
-    title: 'Affiliate Disclosure — DevTosh Superbazaar',
+    title: 'Devtosh Superbazaar - Affiliate Disclosure',
+    metaDesc: 'Learn how Devtosh Superbazaar maintains editorial independence and how affiliate partnerships work under ASCI guidelines.',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -2211,7 +2297,8 @@ function renderAffiliateDisclosureView() {
 
 function renderPrivacyView() {
   return {
-    title: 'Privacy Policy — DevTosh Superbazaar',
+    title: 'Devtosh Superbazaar - Privacy Policy',
+    metaDesc: 'Read the privacy policy of Devtosh Superbazaar. Guest-first privacy architecture without mandatory logins.',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -2222,7 +2309,7 @@ function renderPrivacyView() {
         <div style="margin-top:24px;line-height:1.65;color:var(--tx)">
           <div class="adm-card" style="border-left:4px solid var(--wn)">
             <p style="margin:0;font-size:14px;line-height:1.6">
-              <b>Commitment to Privacy:</b> DevTosh Superbazaar is designed on a guest-first, data-minimization architecture. We strive to align our data handling with the principles of the Digital Personal Data Protection Act, 2023 (DPDP Act, 2023) of India by collecting only the technical data strictly necessary to deliver the website. As an open discovery catalog, we do not require account registration or collect personal banking details from consumers.
+              <b>Commitment to Privacy:</b> Devtosh Superbazaar is designed on a guest-first, data-minimization architecture. We strive to align our data handling with the principles of the Digital Personal Data Protection Act, 2023 (DPDP Act, 2023) of India by collecting only the technical data strictly necessary to deliver the website. As an open discovery catalog, we do not require account registration or collect personal banking details from consumers.
             </p>
           </div>
 
@@ -2248,7 +2335,7 @@ function renderPrivacyView() {
 
           <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">5. Third-Party Retailer Links</h2>
           <p class="mu">
-            Clicking outbound merchant links (such as to Meesho or other partner retailers) navigates you away from DevTosh Superbazaar. Those independent platforms operate under their own privacy policies, cookie policies, and data processing practices. We encourage you to review their policies upon visiting.
+            Clicking outbound merchant links (such as to Meesho or other partner retailers) navigates you away from Devtosh Superbazaar. Those independent platforms operate under their own privacy policies, cookie policies, and data processing practices. We encourage you to review their policies upon visiting.
           </p>
 
           <h2 class="f" style="font-size:20px;margin:24px 0 10px;color:var(--dp)">6. Direct Communications & Grievance Redressal</h2>
@@ -2267,7 +2354,8 @@ function renderPrivacyView() {
 
 function renderTermsView() {
   return {
-    title: 'Terms of Use — DevTosh Superbazaar',
+    title: 'Devtosh Superbazaar - Terms of Use',
+    metaDesc: 'Review the terms of service, platform policies, and catalog accuracy guidelines for Devtosh Superbazaar.',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -2492,90 +2580,26 @@ export function view(route: ReturnType<typeof parseRoute>) {
   // Public Catalog Routes
   if (root === 'home' || root === 'all' || root === '') {
     return renderPublicCatalog(
-      'Curated Catalogue',
-      'Browse handpicked fashion, phones, footwear, and home finds from verified online stores.',
+      'Devtosh Superbazaar - Fashion, Mobiles & Lifestyle',
+      'Discover curated fashion, smartphones, electronics, accessories, and home living products at Devtosh Superbazaar. Explore quality finds from online retail partners.',
       store.products,
-      'all'
+      'all',
+      'Curated Catalogue & Handpicked Finds'
     );
   }
 
-  if (root === 'women') {
-    const items = store.products.filter(isWomenProduct);
+  const categoryMatch = SITE_CATEGORIES.find(c => c.slug === root || c.key === root);
+  if (categoryMatch) {
+    let items = store.products.filter(p => isProductInCategory(p, categoryMatch.slug));
+    if (categoryMatch.slug === 'new') {
+      items = items.sort((a, b) => (b.added || 0) - (a.added || 0));
+    }
     return renderPublicCatalog(
-      'Women’s Collection',
-      'Sarees, kurtis, dresses, tops, jewellery, and contemporary western wear curated for elegance.',
+      categoryMatch.title,
+      categoryMatch.description,
       items,
-      'women'
-    );
-  }
-
-  if (root === 'men') {
-    const items = store.products.filter(isMenProduct);
-    return renderPublicCatalog(
-      'Men’s Collection',
-      'Everyday shirts, tees, jeans, trousers, jackets, and timeless menswear essentials.',
-      items,
-      'men'
-    );
-  }
-
-  if (root === 'kids') {
-    const items = store.products.filter(isKidsProduct);
-    return renderPublicCatalog(
-      'Kids & Baby',
-      'Comfortable clothing, babywear, playful sets, toys, and daily essentials for boys and girls.',
-      items,
-      'kids'
-    );
-  }
-
-  if (root === 'footwear') {
-    const items = store.products.filter(isFootwearProduct);
-    return renderPublicCatalog(
-      'Footwear Collection',
-      'Everyday sneakers, comfortable sandals, loafers, slides, and casual footwear.',
-      items,
-      'footwear'
-    );
-  }
-
-  if (root === 'electronics' || root === 'mobiles') {
-    const items = store.products.filter(isElectronicsProduct);
-    return renderPublicCatalog(
-      'Electronics & Mobiles',
-      'High-grip mobile holders, car & desk mounts, wireless earbuds, smartwatches, and everyday tech gadgets.',
-      items,
-      'electronics'
-    );
-  }
-
-  if (root === 'accessories') {
-    const items = store.products.filter(isAccessoriesProduct);
-    return renderPublicCatalog(
-      'Accessories & Lifestyle',
-      'Mobile holders & mounts, watches, sunglasses, wallets, belts, caps, and lifestyle gear.',
-      items,
-      'accessories'
-    );
-  }
-
-  if (root === 'home-living' || root === 'home-decor') {
-    const items = store.products.filter(isHomeLivingProduct);
-    return renderPublicCatalog(
-      'Home & Living',
-      'Curated kitchen utilities, insulated water bottles, home decor, and organizers.',
-      items,
-      'home-living'
-    );
-  }
-
-  if (root === 'new') {
-    const items = store.products.filter(isNewProduct).sort((a, b) => (b.added || 0) - (a.added || 0));
-    return renderPublicCatalog(
-      'New Arrivals',
-      'The freshest curated additions, trending styles, and top-rated affiliate deals.',
-      items,
-      'new'
+      categoryMatch.slug,
+      categoryMatch.h1
     );
   }
 
@@ -2587,7 +2611,13 @@ export function view(route: ReturnType<typeof parseRoute>) {
           return tokens.every(t => hay.includes(t));
         })
       : [];
-    return renderPublicCatalog(`Search: “${q}”`, `Search results for “${q}”.`, matches, '');
+    return renderPublicCatalog(
+      `Devtosh Superbazaar - Search: “${q}”`,
+      `Search results for “${q}” across curated fashion, footwear, electronics, and lifestyle products at Devtosh Superbazaar.`,
+      matches,
+      '',
+      `Search: “${q}”`
+    );
   }
 
   if (root === 'wishlist') {
@@ -2652,7 +2682,8 @@ export function view(route: ReturnType<typeof parseRoute>) {
         return renderArticleDetail(art.slug, allArticles, store.isAdmin);
       }
       return {
-        title: 'Article Not Found',
+        title: 'Devtosh Superbazaar - Article Not Found',
+        metaDesc: 'The requested editorial guide could not be located at Devtosh Superbazaar.',
         navKey: 'blog',
         html: `
           <section class="w pgs">
@@ -2673,7 +2704,8 @@ export function view(route: ReturnType<typeof parseRoute>) {
   }
 
   return {
-    title: 'Page Not Found',
+    title: 'Devtosh Superbazaar - Page Not Found',
+    metaDesc: 'The requested page or product was not found in our curated collections at Devtosh Superbazaar.',
     navKey: '',
     html: `
       <section class="w pgs">
@@ -2718,14 +2750,54 @@ export function draw(isNew = false) {
   if (!app) return;
 
   app.innerHTML = v.html;
-  document.title = `${v.title} — DevTosh Superbazaar`;
-  trackSpaPageView(document.title);
 
-  // Synchronize dynamic meta description & canonical tag
-  if ((v as any).metaDesc) {
-    const metaDesc = document.querySelector('meta[name="description"]');
-    if (metaDesc) metaDesc.setAttribute('content', (v as any).metaDesc);
+  // Standardize title with exact required brand prefix: "Devtosh Superbazaar - "
+  let rawTitle = (v.title || '').trim();
+  rawTitle = rawTitle.replace(/^(?:Devtosh|DevTosh)\s*Superbazaar\s*[-—|:]\s*/i, '').trim();
+  rawTitle = rawTitle.replace(/\s*[-—|:]\s*(?:Devtosh|DevTosh)\s*Superbazaar.*$/i, '').trim();
+  const finalTitle = rawTitle ? `Devtosh Superbazaar - ${rawTitle}` : 'Devtosh Superbazaar - Fashion, Mobiles & Lifestyle';
+
+  document.title = finalTitle;
+  trackSpaPageView(finalTitle);
+
+  // Synchronize Open Graph & Twitter title
+  let ogTitle = document.querySelector('meta[property="og:title"]');
+  if (!ogTitle) {
+    ogTitle = document.createElement('meta');
+    ogTitle.setAttribute('property', 'og:title');
+    document.head.appendChild(ogTitle);
   }
+  ogTitle.setAttribute('content', finalTitle);
+
+  let twTitle = document.querySelector('meta[name="twitter:title"]');
+  if (!twTitle) {
+    twTitle = document.createElement('meta');
+    twTitle.setAttribute('name', 'twitter:title');
+    document.head.appendChild(twTitle);
+  }
+  twTitle.setAttribute('content', finalTitle);
+
+  // Synchronize dynamic meta description, Open Graph description & Twitter description
+  const metaDescText = (v as any).metaDesc || 'Discover curated fashion, smartphones, electronics, accessories, and home living products at Devtosh Superbazaar. Explore quality finds from online retail partners.';
+  let metaDesc = document.querySelector('meta[name="description"]');
+  if (metaDesc) metaDesc.setAttribute('content', metaDescText);
+
+  let ogDesc = document.querySelector('meta[property="og:description"]');
+  if (!ogDesc) {
+    ogDesc = document.createElement('meta');
+    ogDesc.setAttribute('property', 'og:description');
+    document.head.appendChild(ogDesc);
+  }
+  ogDesc.setAttribute('content', metaDescText);
+
+  let twDesc = document.querySelector('meta[name="twitter:description"]');
+  if (!twDesc) {
+    twDesc = document.createElement('meta');
+    twDesc.setAttribute('name', 'twitter:description');
+    document.head.appendChild(twDesc);
+  }
+  twDesc.setAttribute('content', metaDescText);
+
   if ((v as any).canonical) {
     let canLink = document.querySelector('link[rel="canonical"]');
     if (!canLink) {
@@ -3498,6 +3570,21 @@ document.addEventListener('change', (e) => {
   const target = e.target as HTMLElement;
   const a = target.dataset.a;
 
+  // Product category collection checkbox toggle
+  if (target.classList?.contains('p-cat-cb')) {
+    userManuallyCustomizedCategories = true;
+    const isChecked = (target as HTMLInputElement).checked;
+    const card = target.closest('.cat-cb-card') as HTMLElement | null;
+    if (card) {
+      card.style.borderColor = isChecked ? 'var(--wn)' : 'var(--bd)';
+    }
+    const checkedCount = document.querySelectorAll<HTMLInputElement>('input.p-cat-cb:checked').length;
+    const countBadge = document.getElementById('cat-selection-count');
+    if (countBadge) {
+      countBadge.textContent = `${checkedCount} selected`;
+    }
+  }
+
   if (a === 'f') {
     const k = target.dataset.k as keyof typeof store.filters;
     const v = target.dataset.v || '';
@@ -3526,6 +3613,44 @@ document.addEventListener('change', (e) => {
     draw();
   }
 });
+
+/**
+ * Automatically recalculates and checks suggested category checkboxes
+ * based on product title, category, and specifications.
+ */
+export function refreshAutoCategorySuggestions(force = false) {
+  if (userManuallyCustomizedCategories && !force) return;
+  const nameInput = document.getElementById('p-name') as HTMLInputElement | null;
+  const catInput = document.getElementById('p-cat') as HTMLInputElement | null;
+  const descInput = document.getElementById('p-desc') as HTMLTextAreaElement | null;
+  if (!nameInput && !catInput) return;
+
+  const nameVal = nameInput?.value || '';
+  const catVal = catInput?.value || '';
+  const descVal = descInput?.value || '';
+
+  const suggested = suggestProductCategories({
+    name: nameVal,
+    cat: catVal,
+    desc: descVal
+  });
+
+  const checkboxes = document.querySelectorAll<HTMLInputElement>('input.p-cat-cb');
+  let checkedCount = 0;
+  checkboxes.forEach(cb => {
+    cb.checked = suggested.includes(cb.value);
+    const card = cb.closest('.cat-cb-card') as HTMLElement | null;
+    if (card) {
+      card.style.borderColor = cb.checked ? 'var(--wn)' : 'var(--bd)';
+    }
+    if (cb.checked) checkedCount++;
+  });
+
+  const countBadge = document.getElementById('cat-selection-count');
+  if (countBadge) {
+    countBadge.textContent = `${checkedCount} selected`;
+  }
+}
 
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -3569,6 +3694,11 @@ document.addEventListener('input', (e) => {
     if (slugInput && (isNew || !slugInput.value)) {
       slugInput.value = generateSlug(nameVal);
     }
+    refreshAutoCategorySuggestions(false);
+  }
+
+  if (target.id === 'p-cat' || target.id === 'p-desc') {
+    refreshAutoCategorySuggestions(false);
   }
 
   if (target.id === 'p-slug') {
@@ -3947,6 +4077,10 @@ document.addEventListener('submit', async (e) => {
       return;
     }
 
+    const checkedCats = Array.from(document.querySelectorAll<HTMLInputElement>('input.p-cat-cb:checked'))
+      .map(cb => cb.value);
+    const categories = checkedCats.length > 0 ? checkedCats : ['all'];
+
     const id = existingId || `${slug}-${Date.now().toString(36)}`;
     const existingProd = existingId ? store.adminProducts.find(item => item.id === existingId) : null;
 
@@ -3957,6 +4091,7 @@ document.addEventListener('submit', async (e) => {
       slug,
       brand,
       cat,
+      categories,
       price,
       mrp,
       currency: 'INR',
@@ -4155,6 +4290,36 @@ document.addEventListener('submit', async (e) => {
 document.addEventListener('click', async (e) => {
   const target = e.target as HTMLElement;
 
+  // Category collection quick actions
+  if (target.id === 'cat-auto-suggest-btn' || target.closest('#cat-auto-suggest-btn')) {
+    userManuallyCustomizedCategories = false;
+    refreshAutoCategorySuggestions(true);
+    announce('Categories automatically detected from product details');
+    return;
+  }
+  if (target.id === 'cat-select-all-btn') {
+    userManuallyCustomizedCategories = true;
+    document.querySelectorAll<HTMLInputElement>('input.p-cat-cb').forEach(cb => {
+      cb.checked = true;
+      const card = cb.closest('.cat-cb-card') as HTMLElement | null;
+      if (card) card.style.borderColor = 'var(--wn)';
+    });
+    const countBadge = document.getElementById('cat-selection-count');
+    if (countBadge) countBadge.textContent = `${document.querySelectorAll('input.p-cat-cb').length} selected`;
+    return;
+  }
+  if (target.id === 'cat-clear-all-btn') {
+    userManuallyCustomizedCategories = true;
+    document.querySelectorAll<HTMLInputElement>('input.p-cat-cb').forEach(cb => {
+      cb.checked = false;
+      const card = cb.closest('.cat-cb-card') as HTMLElement | null;
+      if (card) card.style.borderColor = 'var(--bd)';
+    });
+    const countBadge = document.getElementById('cat-selection-count');
+    if (countBadge) countBadge.textContent = `0 selected`;
+    return;
+  }
+
   // Auto-extract from Meesho or any Retailer Link or pasted specifications
   if (target.id === 'import-btn' || target.id === 'import-text-btn') {
     const urlInput = document.getElementById('import-url') as HTMLInputElement;
@@ -4241,6 +4406,11 @@ document.addEventListener('click', async (e) => {
 
       // Update price calculation discount preview
       priceInput?.dispatchEvent(new Event('input'));
+
+      // Automatically preselect suggested categories if admin hasn't customized selections
+      if (!userManuallyCustomizedCategories) {
+        refreshAutoCategorySuggestions(true);
+      }
 
       const verifiedList: string[] = [];
       const unverifiedList: string[] = [];
@@ -4343,6 +4513,11 @@ document.addEventListener('click', async (e) => {
       }
 
       priceInput?.dispatchEvent(new Event('input'));
+
+      // Automatically preselect suggested categories if admin hasn't customized selections
+      if (!userManuallyCustomizedCategories) {
+        refreshAutoCategorySuggestions(true);
+      }
 
       const verifiedList: string[] = [];
       const unverifiedList: string[] = [];
